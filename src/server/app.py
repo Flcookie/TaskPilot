@@ -67,11 +67,14 @@ from src.server.eval_request import EvaluateReportRequest, EvaluateReportRespons
 from src.server.config_request import ConfigResponse
 from src.server.mcp_request import MCPServerMetadataRequest, MCPServerMetadataResponse
 from src.server.mcp_utils import load_mcp_tools
+from src.runtime.task.service import get_task_service
+from src.runtime.task.sse import persist_workflow_stream
 from src.server.rag_request import (
     RAGConfigResponse,
     RAGResourceRequest,
     RAGResourcesResponse,
 )
+from src.server.task_routes import router as task_router
 from src.tools import VolcengineTTS
 from src.utils.json_utils import sanitize_args
 from src.utils.log_sanitizer import (
@@ -243,6 +246,7 @@ load_qdrant_examples()
 
 in_memory_store = InMemoryStore()
 graph = build_graph_with_memory()
+app.include_router(task_router)
 
 
 @app.post("/api/chat/stream")
@@ -263,25 +267,36 @@ async def chat_stream(request: ChatRequest):
     if thread_id == "__default__":
         thread_id = str(uuid4())
 
+    payload = request.model_dump()
+    task = get_task_service().create(
+        thread_id=thread_id,
+        input_data={"messages": payload.get("messages") or []},
+        config={key: value for key, value in payload.items() if key != "messages"},
+    )
+
     return StreamingResponse(
-        _astream_workflow_generator(
-            request.model_dump()["messages"],
-            thread_id,
-            request.resources,
-            request.max_plan_iterations,
-            request.max_step_num,
-            request.max_search_results,
-            request.auto_accepted_plan,
-            request.interrupt_feedback,
-            request.mcp_settings if mcp_enabled else {},
-            request.enable_background_investigation,
-            request.enable_web_search,
-            request.report_style,
-            request.enable_deep_thinking,
-            request.enable_clarification,
-            request.max_clarification_rounds,
-            request.locale,
-            request.interrupt_before_tools,
+        persist_workflow_stream(
+            get_task_service(),
+            task.id,
+            _astream_workflow_generator(
+                payload["messages"],
+                thread_id,
+                request.resources,
+                request.max_plan_iterations,
+                request.max_step_num,
+                request.max_search_results,
+                request.auto_accepted_plan,
+                request.interrupt_feedback,
+                request.mcp_settings if mcp_enabled else {},
+                request.enable_background_investigation,
+                request.enable_web_search,
+                request.report_style,
+                request.enable_deep_thinking,
+                request.enable_clarification,
+                request.max_clarification_rounds,
+                request.locale,
+                request.interrupt_before_tools,
+            ),
         ),
         media_type="text/event-stream",
     )
