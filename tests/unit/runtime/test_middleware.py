@@ -52,8 +52,10 @@ def test_default_stack_has_expected_layers():
     assert build_default_stack().names == [
         "audit",
         "skill",
+        "context_inject",
         "token_accounting",
         "tool_guard",
+        "memory_write",
     ]
 
 

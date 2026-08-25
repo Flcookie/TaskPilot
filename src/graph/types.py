@@ -51,3 +51,4 @@ class State(MessagesState):
     selected_skills: list[str] = field(default_factory=list)
     skill_context: str = ""
     allowed_tools: list[str] | None = None
+    memory_context: str = ""

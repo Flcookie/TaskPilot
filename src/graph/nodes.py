@@ -296,6 +296,9 @@ def planner_node(
     skill_context = state.get("skill_context")
     if skill_context:
         messages.append({"role": "system", "content": f"# Active Skill\n\n{skill_context}"})
+    memory_context = state.get("memory_context")
+    if memory_context:
+        messages.append({"role": "system", "content": memory_context})
 
     if state.get("enable_background_investigation") and state.get(
         "background_investigation_results"

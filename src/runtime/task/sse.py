@@ -54,9 +54,17 @@ async def persist_workflow_stream(
 ) -> AsyncIterator[str]:
     """Start a task, dual-write each SSE chunk to EventStore, then close the lifecycle."""
     service.start(task_id)
+    task = service.get(task_id)
+    user_id = task.user_id or task.thread_id
+    user_text = ""
+    messages = task.input.get("messages") or []
+    if messages:
+        last = messages[-1]
+        if isinstance(last, dict):
+            user_text = str(last.get("content") or "")
     stack = get_middleware_stack()
-    ctx = RuntimeContext(task_id=task_id)
-    await stack.ainvoke("before_task", ctx, {"task_id": task_id})
+    ctx = RuntimeContext(task_id=task_id, extra={"user_id": user_id})
+    await stack.ainvoke("before_task", ctx, {"task_id": task_id, "user_id": user_id})
     try:
         async for chunk in workflow_events:
             event_type, payload = parse_sse_chunk(chunk)
@@ -65,10 +73,28 @@ async def persist_workflow_stream(
                 if event_type in {"message_chunk", "tool_calls"}:
                     ctx.node = payload.get("langgraph_node") or payload.get("agent")
                     await stack.ainvoke("after_llm", ctx, payload)
+                if event_type == "tool_call_result":
+                    await stack.ainvoke(
+                        "after_tool",
+                        ctx,
+                        {
+                            "name": payload.get("name") or payload.get("tool_name"),
+                            "content": payload.get("content"),
+                            "user_id": user_id,
+                        },
+                    )
             yield chunk
         finished = service.finish_if_running(task_id)
         await stack.ainvoke(
-            "after_task", ctx, {"task_id": task_id, "status": finished.status.value}
+            "after_task",
+            ctx,
+            {
+                "task_id": task_id,
+                "status": finished.status.value,
+                "user_id": user_id,
+                "user_text": user_text,
+                "locale": (task.config or {}).get("locale"),
+            },
         )
     except Exception as exc:
         current = service.get(task_id)

@@ -131,6 +131,8 @@ _stack: Optional[MiddlewareStack] = None
 
 def build_default_stack() -> MiddlewareStack:
     from src.runtime.middleware.audit import AuditMiddleware
+    from src.runtime.middleware.context_inject import ContextInjectMiddleware
+    from src.runtime.middleware.memory_write import MemoryWriteMiddleware
     from src.runtime.middleware.skill import SkillMiddleware
     from src.runtime.middleware.token_accounting import TokenAccountingMiddleware
     from src.runtime.middleware.tool_guard import ToolGuardMiddleware
@@ -139,8 +141,10 @@ def build_default_stack() -> MiddlewareStack:
         [
             AuditMiddleware(),
             SkillMiddleware(),
+            ContextInjectMiddleware(),
             TokenAccountingMiddleware(),
             ToolGuardMiddleware(),
+            MemoryWriteMiddleware(),
         ]
     )
 

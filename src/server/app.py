@@ -864,6 +864,7 @@ async def _astream_workflow_generator(
     workflow_input["skill_context"] = skill_payload.get("skill_context") or ""
     workflow_input["selected_skills"] = skill_payload.get("selected_skills") or []
     workflow_input["allowed_tools"] = skill_payload.get("allowed_tools")
+    workflow_input["memory_context"] = skill_payload.get("memory_context") or ""
 
     if not auto_accepted_plan and interrupt_feedback:
         logger.debug(f"[{safe_thread_id}] Creating resume command with interrupt_feedback: {safe_feedback}")
