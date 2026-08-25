@@ -46,3 +46,8 @@ class State(MessagesState):
 
     # Workflow control
     goto: str = "planner"  # Default next node
+
+    # Skill injection (lazy-loaded policy, not a second planner)
+    selected_skills: list[str] = field(default_factory=list)
+    skill_context: str = ""
+    allowed_tools: list[str] | None = None

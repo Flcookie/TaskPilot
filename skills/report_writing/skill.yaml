@@ -1,0 +1,8 @@
+name: report_writing
+description: 在已有材料上结构化成文，强调事实、引用和可读性
+tags:
+  - writing
+  - report
+  - synthesis
+allowed_tools: []
+priority: 5

@@ -293,6 +293,10 @@ def planner_node(
         # Normal mode: use full conversation history
         messages = apply_prompt_template("planner", state, configurable, state.get("locale", "en-US"))
 
+    skill_context = state.get("skill_context")
+    if skill_context:
+        messages.append({"role": "system", "content": f"# Active Skill\n\n{skill_context}"})
+
     if state.get("enable_background_investigation") and state.get(
         "background_investigation_results"
     ):
@@ -1352,6 +1356,37 @@ async def _execute_agent_step(
     )
 
 
+_BUILTIN_TOOL_NAMES = {
+    "web_search",
+    "crawl",
+    "crawl_tool",
+    "python_repl",
+    "python_repl_tool",
+    "local_search_tool",
+}
+_TOOL_ALIASES = {
+    "crawl_tool": "crawl",
+    "python_repl_tool": "python_repl",
+}
+
+
+def _filter_tools_by_skill(tools: list, allowed: list[str] | None) -> list:
+    """Hide builtin tools that the selected Skill does not allow. MCP tools stay visible."""
+    if allowed is None:
+        return tools
+    allowed_set = set(allowed)
+    visible = []
+    for item in tools:
+        name = getattr(item, "name", "")
+        canonical = _TOOL_ALIASES.get(name, name)
+        if name not in _BUILTIN_TOOL_NAMES and canonical not in _BUILTIN_TOOL_NAMES:
+            visible.append(item)
+            continue
+        if name in allowed_set or canonical in allowed_set:
+            visible.append(item)
+    return visible
+
+
 async def _setup_and_execute_agent_step(
     state: State,
     config: RunnableConfig,
@@ -1410,6 +1445,8 @@ async def _setup_and_execute_agent_step(
                     f"Powered by '{enabled_tools[tool.name]}'.\n{tool.description}"
                 )
                 loaded_tools.append(registry.wrap(tool, source="mcp"))
+
+    loaded_tools = _filter_tools_by_skill(loaded_tools, state.get("allowed_tools"))
 
     llm_token_limit = get_llm_token_limit_by_type(AGENT_LLM_MAP[agent_type])
     pre_model_hook = partial(ContextManager(llm_token_limit, 3).compress_messages)

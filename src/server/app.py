@@ -296,6 +296,7 @@ async def chat_stream(request: ChatRequest):
                 request.max_clarification_rounds,
                 request.locale,
                 request.interrupt_before_tools,
+                task.id,
             ),
         ),
         media_type="text/event-stream",
@@ -804,6 +805,7 @@ async def _astream_workflow_generator(
     max_clarification_rounds: int,
     locale: str = "en-US",
     interrupt_before_tools: Optional[List[str]] = None,
+    task_id: Optional[str] = None,
 ):
     safe_thread_id = sanitize_thread_id(thread_id)
     safe_feedback = sanitize_log_input(interrupt_feedback) if interrupt_feedback else ""
@@ -852,6 +854,16 @@ async def _astream_workflow_generator(
         "max_clarification_rounds": max_clarification_rounds,
         "locale": locale,
     }
+
+    from src.runtime.skills.apply import apply_skill_selection, extract_user_text
+
+    skill_payload = apply_skill_selection(
+        extract_user_text(messages) or str(latest_message_content or ""),
+        task_id=task_id,
+    )
+    workflow_input["skill_context"] = skill_payload.get("skill_context") or ""
+    workflow_input["selected_skills"] = skill_payload.get("selected_skills") or []
+    workflow_input["allowed_tools"] = skill_payload.get("allowed_tools")
 
     if not auto_accepted_plan and interrupt_feedback:
         logger.debug(f"[{safe_thread_id}] Creating resume command with interrupt_feedback: {safe_feedback}")

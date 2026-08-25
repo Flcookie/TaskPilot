@@ -1,0 +1,10 @@
+name: data_analysis
+description: 用于数值计算、财报对比、统计汇总和图表数据准备
+tags:
+  - data
+  - python
+  - analysis
+allowed_tools:
+  - python_repl
+  - python_repl_tool
+priority: 8

@@ -1,0 +1,14 @@
+name: deep_research
+description: 用于复杂主题调研、信源验证和研究报告生成
+tags:
+  - research
+  - web
+  - report
+allowed_tools:
+  - web_search
+  - crawl
+  - crawl_tool
+  - python_repl
+  - python_repl_tool
+  - local_search_tool
+priority: 10

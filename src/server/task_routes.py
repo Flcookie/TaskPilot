@@ -177,6 +177,7 @@ async def _stream_task_events(task_id: str, after_seq: int = 0):
         chat_request.max_clarification_rounds,
         chat_request.locale,
         chat_request.interrupt_before_tools,
+        task_id,
     )
     async for chunk in persist_workflow_stream(service, task_id, workflow):
         yield chunk

@@ -49,7 +49,12 @@ def test_disabling_one_middleware_keeps_the_stack_working():
 
 
 def test_default_stack_has_expected_layers():
-    assert build_default_stack().names == ["audit", "token_accounting", "tool_guard"]
+    assert build_default_stack().names == [
+        "audit",
+        "skill",
+        "token_accounting",
+        "tool_guard",
+    ]
 
 
 def test_tool_guard_blocks_tools_outside_allow_list():
