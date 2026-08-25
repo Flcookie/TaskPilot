@@ -23,6 +23,7 @@ from src.config.configuration import Configuration
 from src.llms.llm import get_llm_by_type, get_llm_token_limit_by_type
 from src.prompts.planner_model import Plan
 from src.prompts.template import apply_prompt_template, get_system_prompt_template
+from src.runtime.tools.registry import get_tool_registry
 from src.tools import (
     crawl_tool,
     get_retriever_tool,
@@ -1376,7 +1377,8 @@ async def _setup_and_execute_agent_step(
     configurable = Configuration.from_runnable_config(config)
     mcp_servers = {}
     enabled_tools = {}
-    loaded_tools = default_tools[:]
+    registry = get_tool_registry()
+    loaded_tools = registry.wrap_all(default_tools[:], source="native")
     
     # Get locale from workflow state to pass to agent creation
     # This fixes issue #743 where locale was not correctly retrieved in agent prompt
@@ -1407,7 +1409,7 @@ async def _setup_and_execute_agent_step(
                 tool.description = (
                     f"Powered by '{enabled_tools[tool.name]}'.\n{tool.description}"
                 )
-                loaded_tools.append(tool)
+                loaded_tools.append(registry.wrap(tool, source="mcp"))
 
     llm_token_limit = get_llm_token_limit_by_type(AGENT_LLM_MAP[agent_type])
     pre_model_hook = partial(ContextManager(llm_token_limit, 3).compress_messages)

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from typing import Any, AsyncIterator, Optional
 
+from src.runtime.middleware.base import RuntimeContext, get_middleware_stack
 from src.runtime.task.models import TaskEvent
 from src.runtime.task.service import TaskService
 
@@ -53,15 +54,25 @@ async def persist_workflow_stream(
 ) -> AsyncIterator[str]:
     """Start a task, dual-write each SSE chunk to EventStore, then close the lifecycle."""
     service.start(task_id)
+    stack = get_middleware_stack()
+    ctx = RuntimeContext(task_id=task_id)
+    await stack.ainvoke("before_task", ctx, {"task_id": task_id})
     try:
         async for chunk in workflow_events:
             event_type, payload = parse_sse_chunk(chunk)
             if event_type:
                 service.apply_stream_event(task_id, event_type, payload)
+                if event_type in {"message_chunk", "tool_calls"}:
+                    ctx.node = payload.get("langgraph_node") or payload.get("agent")
+                    await stack.ainvoke("after_llm", ctx, payload)
             yield chunk
-        service.finish_if_running(task_id)
+        finished = service.finish_if_running(task_id)
+        await stack.ainvoke(
+            "after_task", ctx, {"task_id": task_id, "status": finished.status.value}
+        )
     except Exception as exc:
         current = service.get(task_id)
         if current.status.value != "cancelled":
-            service.mark_failed(task_id, str(exc))
+            failed = service.mark_failed(task_id, str(exc))
+            await stack.ainvoke("on_error", ctx, {"error": exc, "status": failed.status.value})
         raise
