@@ -13,11 +13,23 @@ class StepType(str, Enum):
     PROCESSING = "processing"
 
 
+class StepStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class Step(BaseModel):
     need_search: bool = Field(..., description="Must be explicitly set for each step")
     title: str
     description: str = Field(..., description="Specify exactly what data to collect")
     step_type: StepType = Field(..., description="Indicates the nature of the step")
+    status: StepStatus = Field(
+        default=StepStatus.PENDING,
+        description="Runtime step status; assigned by TaskPilot, not the planner",
+    )
     execution_res: Optional[str] = Field(
         default=None, description="The Step execution result"
     )

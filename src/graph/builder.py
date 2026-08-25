@@ -4,7 +4,7 @@
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from src.prompts.planner_model import StepType
+from src.runtime.planning import get_agent_loop
 
 from .nodes import (
     analyst_node,
@@ -21,30 +21,7 @@ from .types import State
 
 
 def continue_to_running_research_team(state: State):
-    current_plan = state.get("current_plan")
-    if not current_plan or not current_plan.steps:
-        return "planner"
-
-    if all(step.execution_res for step in current_plan.steps):
-        return "planner"
-
-    # Find first incomplete step
-    incomplete_step = None
-    for step in current_plan.steps:
-        if not step.execution_res:
-            incomplete_step = step
-            break
-
-    if not incomplete_step:
-        return "planner"
-
-    if incomplete_step.step_type == StepType.RESEARCH:
-        return "researcher"
-    if incomplete_step.step_type == StepType.ANALYSIS:
-        return "analyst"
-    if incomplete_step.step_type == StepType.PROCESSING:
-        return "coder"
-    return "planner"
+    return get_agent_loop().next_action(state.get("current_plan"))
 
 
 def _build_base_graph():

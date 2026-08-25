@@ -165,6 +165,15 @@ When planning information gathering, consider these key aspects and ensure COMPR
 - Prioritize the most important information categories based on the research question.
 - Consolidate related research points into single steps where appropriate.
 
+## Plan Revision (when a previous plan already ran)
+
+The runtime will inject **Current Plan Progress** with succeeded / failed / pending steps.
+
+- Treat succeeded steps as frozen. Do not rewrite their title or ask to rerun them.
+- Replace only failed or outdated steps. Output the replacement steps (and any new work).
+- The runtime applies a plan diff: succeeded steps are kept with their results; only your new/replacement steps are queued.
+- If one search step failed, keep the completed research and only repair the failed path.
+
 ## Execution Rules
 
 - To begin with, repeat user's requirement in your own words as `thought`.
@@ -227,6 +236,7 @@ interface Step {
   title: string;
   description: string; // Specify exactly what data to collect or what analysis to perform
   step_type: "research" | "analysis" | "processing"; // Indicates the nature of the step
+  // status and execution_res are assigned by the runtime; do not invent them
 }
 
 interface Plan {

@@ -21,8 +21,15 @@ from src.citations import extract_citations_from_messages, merge_citations
 from src.config.agents import AGENT_LLM_MAP
 from src.config.configuration import Configuration
 from src.llms.llm import get_llm_by_type, get_llm_token_limit_by_type
-from src.prompts.planner_model import Plan
+from src.prompts.planner_model import Plan, StepStatus
 from src.prompts.template import apply_prompt_template, get_system_prompt_template
+from src.runtime.planning import (
+    apply_plan_diff,
+    format_plan_progress,
+    get_agent_loop,
+    mark_step,
+    needs_execution,
+)
 from src.runtime.tools.registry import get_tool_registry
 from src.tools import (
     crawl_tool,
@@ -299,6 +306,9 @@ def planner_node(
     memory_context = state.get("memory_context")
     if memory_context:
         messages.append({"role": "system", "content": memory_context})
+    plan_progress = format_plan_progress(_plan_baseline(state))
+    if plan_progress:
+        messages.append({"role": "system", "content": plan_progress})
 
     if state.get("enable_background_investigation") and state.get(
         "background_investigation_results"
@@ -321,8 +331,11 @@ def planner_node(
     else:
         llm = get_llm_by_type(AGENT_LLM_MAP["planner"])
 
-    # if the plan iterations is greater than the max plan iterations, return the reporter node
-    if plan_iterations >= configurable.max_plan_iterations:
+    if get_agent_loop().should_finish(
+        _plan_baseline(state),
+        plan_iterations=plan_iterations,
+        max_plan_iterations=configurable.max_plan_iterations,
+    ):
         return Command(
             update=preserve_state_meta_fields(state),
             goto="reporter"
@@ -381,26 +394,63 @@ def planner_node(
     # Validate and fix plan to ensure web search requirements are met
     if isinstance(curr_plan, dict):
         curr_plan = validate_and_fix_plan(curr_plan, configurable.enforce_web_search, configurable.enable_web_search)
+        curr_plan = _merge_planner_output(state, curr_plan)
 
-    if isinstance(curr_plan, dict) and curr_plan.get("has_enough_context"):
+    loop = get_agent_loop()
+    parsed_plan = None
+    if isinstance(curr_plan, dict):
+        try:
+            parsed_plan = Plan.model_validate(curr_plan)
+        except ValidationError:
+            parsed_plan = None
+    if parsed_plan is not None and loop.should_finish(
+        parsed_plan,
+        plan_iterations=plan_iterations,
+        max_plan_iterations=configurable.max_plan_iterations,
+        has_enough_context=curr_plan.get("has_enough_context"),
+    ):
         logger.info("Planner response has enough context.")
-        new_plan = Plan.model_validate(curr_plan)
         return Command(
             update={
                 "messages": [AIMessage(content=full_response, name="planner")],
-                "current_plan": new_plan,
+                "current_plan": parsed_plan,
                 **preserve_state_meta_fields(state),
             },
             goto="reporter",
         )
+    if parsed_plan is not None and loop.should_interrupt(
+        parsed_plan,
+        auto_accepted_plan=bool(state.get("auto_accepted_plan")),
+    ):
+        logger.info("AgentLoop requested plan review before execution")
     return Command(
         update={
             "messages": [AIMessage(content=full_response, name="planner")],
-            "current_plan": full_response,
+            "current_plan": json.dumps(curr_plan) if isinstance(curr_plan, dict) else full_response,
             **preserve_state_meta_fields(state),
         },
         goto="human_feedback",
     )
+
+
+def _plan_baseline(state: State) -> Plan | None:
+    for key in ("committed_plan", "current_plan"):
+        plan = state.get(key)
+        if isinstance(plan, Plan):
+            return plan
+    return None
+
+
+def _merge_planner_output(state: State, proposed: dict) -> dict:
+    baseline = _plan_baseline(state)
+    if baseline is None:
+        return proposed
+    try:
+        merged = apply_plan_diff(baseline, proposed)
+    except ValidationError:
+        logger.warning("Plan diff skipped because proposed plan failed validation")
+        return proposed
+    return merged.model_dump(mode="json")
 
 
 def extract_plan_content(plan_data: str | dict | Any) -> str:
@@ -552,6 +602,7 @@ def human_feedback_node(
             configurable.enable_web_search,
         )
 
+        new_plan = _merge_planner_output(state, new_plan)
         validated_plan = Plan.model_validate(new_plan)
 
     except (json.JSONDecodeError, AttributeError, ValueError, ValidationError) as e:
@@ -580,6 +631,7 @@ def human_feedback_node(
     # Build update dict with safe locale handling
     update_dict = {
         "current_plan": validated_plan,
+        "committed_plan": validated_plan,
         "plan_iterations": plan_iterations,
         **preserve_state_meta_fields(state),
     }
@@ -1076,7 +1128,7 @@ async def _handle_recursion_limit_fallback(
     fallback_content = sanitize_tool_response(str(fallback_content))
 
     # Update the step with the fallback result
-    current_step.execution_res = fallback_content
+    mark_step(current_step, StepStatus.SUCCEEDED, fallback_content)
 
     # Return the accumulated messages plus the fallback response
     result_messages = list(cleared_messages)
@@ -1096,15 +1148,15 @@ async def _execute_agent_step(
     observations = state.get("observations", [])
     logger.debug(f"[_execute_agent_step] Plan title: {plan_title}, observations count: {len(observations)}")
 
-    # Find the first unexecuted step
+    # Find the first pending/running step. Failed steps wait for plan diff.
     current_step = None
     completed_steps = []
     for idx, step in enumerate(current_plan.steps):
-        if not step.execution_res:
+        if needs_execution(step):
             current_step = step
             logger.debug(f"[_execute_agent_step] Found unexecuted step at index {idx}: {step.title}")
             break
-        else:
+        if getattr(step, "execution_res", None):
             completed_steps.append(step)
 
     if not current_step:
@@ -1114,6 +1166,7 @@ async def _execute_agent_step(
             goto="research_team"
         )
 
+    mark_step(current_step, StepStatus.RUNNING)
     logger.info(f"[_execute_agent_step] Executing step: {current_step.title}, agent: {agent_name}")
     logger.debug(f"[_execute_agent_step] Completed steps so far: {len(completed_steps)}")
 
@@ -1269,7 +1322,7 @@ async def _execute_agent_step(
                             f"content_len={len(str(msg.content)) if hasattr(msg, 'content') and msg.content else 0}")
 
         detailed_error = f"[ERROR] {agent_name.capitalize()} Agent Error\n\nStep: {current_step.title}\n\nError Details:\n{str(e)}\n\nPlease check the logs for more information."
-        current_step.execution_res = detailed_error
+        mark_step(current_step, StepStatus.FAILED, detailed_error)
 
         return Command(
             update={
@@ -1280,6 +1333,8 @@ async def _execute_agent_step(
                     )
                 ],
                 "observations": observations + [detailed_error],
+                "current_plan": current_plan,
+                "committed_plan": current_plan,
                 **preserve_state_meta_fields(state),
             },
             goto="research_team",
@@ -1317,8 +1372,7 @@ async def _execute_agent_step(
                     "\n\n[VALIDATION WARNING] Researcher did not use the web_search tool as recommended."
                 )
 
-    # Update the step with the execution result
-    current_step.execution_res = response_content
+    mark_step(current_step, StepStatus.SUCCEEDED, response_content)
     logger.info(f"Step '{current_step.title}' execution completed by {agent_name}")
 
     # Include all messages from agent result to preserve intermediate tool calls/results
@@ -1354,6 +1408,8 @@ async def _execute_agent_step(
             "messages": agent_messages,
             "observations": observations + [response_content + validation_info],
             "citations": merged_citations,  # Store merged citations based on existing state and new tool results
+            "current_plan": current_plan,
+            "committed_plan": current_plan,
         },
         goto="research_team",
     )

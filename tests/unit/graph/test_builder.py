@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import src.graph.builder as builder_mod
+from src.prompts.planner_model import StepStatus, StepType
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ def test_continue_to_running_research_team_next_researcher(mock_state):
     Plan = mock_state["Plan"]
     steps = [
         Step(execution_res=True),
-        Step(execution_res=None, step_type=builder_mod.StepType.RESEARCH),
+        Step(execution_res=None, step_type=StepType.RESEARCH),
     ]
     state = {"current_plan": Plan(steps=steps)}
     assert builder_mod.continue_to_running_research_team(state) == "researcher"
@@ -61,7 +62,7 @@ def test_continue_to_running_research_team_next_coder(mock_state):
     Plan = mock_state["Plan"]
     steps = [
         Step(execution_res=True),
-        Step(execution_res=None, step_type=builder_mod.StepType.PROCESSING),
+        Step(execution_res=None, step_type=StepType.PROCESSING),
     ]
     state = {"current_plan": Plan(steps=steps)}
     assert builder_mod.continue_to_running_research_team(state) == "coder"
@@ -72,7 +73,7 @@ def test_continue_to_running_research_team_next_coder_withresult(mock_state):
     Plan = mock_state["Plan"]
     steps = [
         Step(execution_res=True),
-        Step(execution_res=True, step_type=builder_mod.StepType.PROCESSING),
+        Step(execution_res=True, step_type=StepType.PROCESSING),
     ]
     state = {"current_plan": Plan(steps=steps)}
     assert builder_mod.continue_to_running_research_team(state) == "planner"
@@ -82,6 +83,26 @@ def test_continue_to_running_research_team_default_planner(mock_state):
     Step = mock_state["Step"]
     Plan = mock_state["Plan"]
     steps = [Step(execution_res=True), Step(execution_res=None, step_type=None)]
+    state = {"current_plan": Plan(steps=steps)}
+    assert builder_mod.continue_to_running_research_team(state) == "planner"
+
+
+def test_continue_to_running_research_team_failed_step_replans(mock_state):
+    class StatusStep:
+        def __init__(self, execution_res=None, step_type=None, status=None):
+            self.execution_res = execution_res
+            self.step_type = step_type
+            self.status = status
+
+    Plan = mock_state["Plan"]
+    steps = [
+        StatusStep(execution_res="ok", status=StepStatus.SUCCEEDED),
+        StatusStep(
+            execution_res="[ERROR] search timeout",
+            step_type=StepType.RESEARCH,
+            status=StepStatus.FAILED,
+        ),
+    ]
     state = {"current_plan": Plan(steps=steps)}
     assert builder_mod.continue_to_running_research_team(state) == "planner"
 

@@ -24,6 +24,7 @@ class State(MessagesState):
     resources: list[Resource] = []
     plan_iterations: int = 0
     current_plan: Plan | str = None
+    committed_plan: Plan | None = None
     final_report: str = ""
     auto_accepted_plan: bool = False
     enable_background_investigation: bool = True
