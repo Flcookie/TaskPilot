@@ -1,0 +1,12 @@
+services:
+  task-pilot-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: task-pilot-web
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
