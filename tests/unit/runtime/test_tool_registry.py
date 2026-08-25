@@ -1,6 +1,8 @@
 # Copyright (c) 2025 TaskPilot contributors
 # SPDX-License-Identifier: MIT
 
+from unittest.mock import MagicMock
+
 from langchain_core.tools import tool
 
 from src.runtime.middleware.base import MiddlewareStack, RuntimeContext
@@ -74,3 +76,12 @@ def test_wrapped_tool_returns_structured_error_on_failure():
     content = wrapped.invoke({"text": "x"})
     assert content["ok"] is False
     assert content["error_kind"] == "upstream"
+
+
+def test_wrap_skips_invalid_mock_args_schema():
+    fake = MagicMock()
+    fake.name = "default_tool"
+    fake.description = "mock tool"
+    fake.args_schema = MagicMock()
+    wrapped = wrap_tool(fake, stack=MiddlewareStack())
+    assert wrapped.name == "default_tool"

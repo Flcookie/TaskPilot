@@ -1642,9 +1642,10 @@ async def test_setup_and_execute_agent_step_without_mcp(
         agent_type,
         default_tools,
     )
-    # Should call create_agent with default_tools
+    # Default tools go through ToolRegistry before create_agent
     args, kwargs = patch_create_agent.call_args
-    assert args[2] == default_tools
+    assert len(args[2]) == len(default_tools)
+    assert all(hasattr(tool, "name") for tool in args[2])
     patch_execute_agent_step.assert_called_once()
     assert result == "EXECUTED"
 
@@ -1685,7 +1686,8 @@ async def test_setup_and_execute_agent_step_with_mcp_no_enabled_tools(
             default_tools,
         )
         args, kwargs = patch_create_agent.call_args
-        assert args[2] == default_tools
+        assert len(args[2]) == len(default_tools)
+        assert all(hasattr(tool, "name") for tool in args[2])
         patch_execute_agent_step.assert_called_once()
         assert result == "EXECUTED"
 

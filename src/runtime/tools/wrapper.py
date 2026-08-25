@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from typing import Any, Optional
 
 from langchain_core.tools import BaseTool, StructuredTool
+from pydantic import BaseModel
 
 from src.runtime.middleware.base import MiddlewareStack, RuntimeContext, get_middleware_stack
 from src.runtime.middleware.tool_guard import classify_tool_error
@@ -79,13 +80,36 @@ def wrap_tool(
     async def _afunc(**kwargs: Any) -> Any:
         return _func(**kwargs)
 
-    return StructuredTool.from_function(
-        name=tool.name,
-        description=getattr(tool, "description", "") or tool.name,
-        func=_func,
-        coroutine=_afunc,
-        args_schema=getattr(tool, "args_schema", None),
-    )
+    name = _tool_attr_str(tool, "name") or "tool"
+    description = _tool_attr_str(tool, "description") or name
+    kwargs: dict[str, Any] = {
+        "name": name,
+        "description": description,
+        "func": _func,
+        "coroutine": _afunc,
+    }
+    schema = _valid_args_schema(getattr(tool, "args_schema", None))
+    if schema is not None:
+        kwargs["args_schema"] = schema
+    return StructuredTool.from_function(**kwargs)
+
+
+def _tool_attr_str(tool: Any, attr: str) -> str:
+    value = getattr(tool, attr, None)
+    return value if isinstance(value, str) else ""
+
+
+def _valid_args_schema(schema: Any) -> Any:
+    if schema is None:
+        return None
+    if isinstance(schema, dict):
+        return schema
+    try:
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            return schema
+    except TypeError:
+        return None
+    return None
 
 
 def _invoke_with_timeout(
