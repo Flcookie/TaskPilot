@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: task-pilot-backend
+    # Remove the ports section to not expose to host
+    env_file:
+      - .env
+    volumes:
+      - ./conf.yaml:/app/conf.yaml:ro
+    restart: unless-stopped
+    networks:
+      - task-pilot-network
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+    container_name: task-pilot-frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - task-pilot-network
+
+networks:
+  task-pilot-network:
+    driver: bridge
