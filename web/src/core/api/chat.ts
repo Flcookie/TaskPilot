@@ -5,11 +5,12 @@ import { env } from "~/env";
 
 import type { MCPServerMetadata } from "../mcp";
 import type { Resource } from "../messages";
-import { extractReplayIdFromSearchParams } from "../replay/get-replay-id";
+import { extractReplayIdFromSearchParams, extractTaskIdFromSearchParams } from "../replay/get-replay-id";
 import { fetchStream } from "../sse";
 import { sleep } from "../utils";
 
 import { resolveServiceURL } from "./resolve-service-url";
+import { replayTask } from "./tasks";
 import type { ChatEvent } from "./types";
 
 function getLocaleFromCookie(): string {
@@ -68,7 +69,8 @@ export async function* chatStream(
   if (
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY ||
     location.search.includes("mock") ||
-    location.search.includes("replay=")
+    location.search.includes("replay=") ||
+    extractTaskIdFromSearchParams(location.search)
   ) 
     return yield* chatReplayStream(userMessage, params, options);
   
@@ -115,6 +117,10 @@ async function* chatReplayStream(
   options: { abortSignal?: AbortSignal } = {},
 ): AsyncIterable<ChatEvent> {
   const urlParams = new URLSearchParams(window.location.search);
+  const taskId = extractTaskIdFromSearchParams(window.location.search);
+  if (taskId && !env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY && !urlParams.has("mock")) {
+    return yield* replayTask(taskId, options);
+  }
   let replayFilePath = "";
   if (urlParams.has("mock")) {
     if (urlParams.get("mock")) {

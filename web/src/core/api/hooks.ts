@@ -12,12 +12,17 @@ import { fetchReplayTitle } from "./chat";
 import { resolveServiceURL } from "./resolve-service-url";
 
 export function useReplayMetadata() {
-  const { isReplay } = useReplay();
+  const { isReplay, taskId } = useReplay();
   const [title, setTitle] = useState<string | null>(null);
   const isLoading = useRef(false);
   const [error, setError] = useState<boolean>(false);
   useEffect(() => {
     if (!isReplay) {
+      return;
+    }
+    if (taskId) {
+      setTitle(`Task ${taskId.slice(0, 8)}`);
+      document.title = `Task replay - TaskPilot`;
       return;
     }
     if (title || isLoading.current) {
@@ -40,7 +45,7 @@ export function useReplayMetadata() {
       .finally(() => {
         isLoading.current = false;
       });
-  }, [isLoading, isReplay, title]);
+  }, [isLoading, isReplay, taskId, title]);
   return { title, isLoading, hasError: error };
 }
 

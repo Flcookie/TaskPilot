@@ -98,5 +98,31 @@ async def test_persist_workflow_stream_writes_events():
     assert stored.status == TaskStatus.SUCCEEDED
     assert stored.current_node == "reporter"
     types = [event.type for event in service.list_events(task.id)]
+    assert "task" in types
     assert "message_chunk" in types
-    assert chunks[0].startswith("event: message_chunk")
+    assert chunks[0].startswith("event: task")
+    assert any(chunk.startswith("event: message_chunk") for chunk in chunks)
+    assert '"task_id"' in chunks[0]
+
+
+@pytest.mark.asyncio
+async def test_persist_workflow_stream_forwards_skill_and_token_events():
+    service = TaskService()
+    task = service.create()
+
+    async def _fake_workflow():
+        service.append_event(
+            task.id, "skill_selected", {"selected_skills": ["deep_research"]}
+        )
+        service.append_event(task.id, "token_usage", {"total_tokens": 12})
+        yield 'event: message_chunk\ndata: {"content": "hi", "langgraph_node": "reporter"}\n\n'
+
+    chunks = []
+    async for chunk in persist_workflow_stream(service, task.id, _fake_workflow()):
+        chunks.append(chunk)
+
+    headers = [chunk.split("\n", 1)[0] for chunk in chunks]
+    assert headers[0] == "event: task"
+    assert "event: skill_selected" in headers
+    assert "event: token_usage" in headers
+    assert "event: message_chunk" in headers

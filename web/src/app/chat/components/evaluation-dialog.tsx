@@ -7,9 +7,11 @@ import {
   Image,
   Link2,
   Loader2,
+  RefreshCw,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Wrench,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,7 +25,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Progress } from "~/components/ui/progress";
-import { evaluateReport, type EvaluationResult } from "~/core/api";
+import { evaluateReport, evaluateTask, type AgentEvaluationResult } from "~/core/api";
 import { cn } from "~/lib/utils";
 
 interface EvaluationDialogProps {
@@ -32,6 +34,7 @@ interface EvaluationDialogProps {
   reportContent: string;
   query: string;
   reportStyle?: string;
+  taskId?: string | null;
 }
 
 function GradeBadge({ grade }: { grade: string }) {
@@ -91,11 +94,12 @@ export function EvaluationDialog({
   reportContent,
   query,
   reportStyle,
+  taskId,
 }: EvaluationDialogProps) {
   const t = useTranslations("chat.evaluation");
   const [loading, setLoading] = useState(false);
   const [deepLoading, setDeepLoading] = useState(false);
-  const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [result, setResult] = useState<AgentEvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const hasRunInitialEvaluation = useRef(false);
 
@@ -109,13 +113,15 @@ export function EvaluationDialog({
       setError(null);
 
       try {
-        const evalResult = await evaluateReport(
-          reportContent,
-          query,
-          reportStyle,
-          useLlm,
-        );
-        setResult(evalResult);
+        const evalResult = taskId
+          ? await evaluateTask(taskId, {
+              report: reportContent,
+              query,
+              reportStyle,
+              useLlm,
+            })
+          : await evaluateReport(reportContent, query, reportStyle, useLlm);
+        setResult(evalResult as AgentEvaluationResult);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Evaluation failed");
       } finally {
@@ -123,7 +129,7 @@ export function EvaluationDialog({
         setDeepLoading(false);
       }
     },
-    [reportContent, query, reportStyle],
+    [reportContent, query, reportStyle, taskId],
   );
 
   useEffect(() => {
@@ -145,8 +151,10 @@ export function EvaluationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
+          <DialogTitle>{taskId ? t("taskTitle") : t("title")}</DialogTitle>
+          <DialogDescription>
+            {taskId ? t("taskDescription") : t("description")}
+          </DialogDescription>
         </DialogHeader>
 
         {loading && !result ? (
@@ -164,14 +172,76 @@ export function EvaluationDialog({
             <div className="flex items-center gap-6">
               <GradeBadge grade={result.grade} />
               <div>
-                <div className="text-3xl font-bold">{result.score}/10</div>
+                <div className="text-3xl font-bold">
+                  {(result.final_score ?? result.score).toFixed(1)}/10
+                </div>
                 <div className="text-muted-foreground text-sm">
                   {t("overallScore")}
                 </div>
+                {result.process_score != null && (
+                  <div className="text-muted-foreground mt-1 text-xs">
+                    {t("processScore")}: {result.process_score.toFixed(1)}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Metrics */}
+            {result.process && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">{t("processMetrics")}</h4>
+                <div className="bg-muted/50 space-y-2 rounded-lg p-3">
+                  <MetricItem
+                    icon={Wrench}
+                    label={t("toolCalls")}
+                    value={result.process.tool_calls}
+                  />
+                  <MetricItem
+                    icon={FileText}
+                    label={t("tokenTotal")}
+                    value={result.process.token_total.toLocaleString()}
+                  />
+                  <MetricItem
+                    icon={RefreshCw}
+                    label={t("replanCount")}
+                    value={result.process.replan_count}
+                  />
+                  <MetricItem
+                    icon={Sparkles}
+                    label={t("recoveryRate")}
+                    value={Math.round(result.process.recovery_rate * 100)}
+                    suffix="%"
+                  />
+                </div>
+              </div>
+            )}
+
+            {result.skill_loading && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">{t("skillLoading")}</h4>
+                <div className="bg-muted/50 grid grid-cols-3 gap-2 rounded-lg p-3 text-xs">
+                  <div>
+                    <div className="text-muted-foreground">{t("skillNone")}</div>
+                    <div className="font-medium">
+                      {result.skill_loading.none.tokens.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t("skillAll")}</div>
+                    <div className="font-medium">
+                      {result.skill_loading.all_injected.tokens.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t("skillDynamic")}</div>
+                    <div className="font-medium">
+                      {result.skill_loading.dynamic.tokens.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {result.metrics.word_count > 0 && (
             <div className="space-y-3">
               <h4 className="text-sm font-medium">{t("metrics")}</h4>
               <div className="bg-muted/50 space-y-2 rounded-lg p-3">
@@ -211,6 +281,7 @@ export function EvaluationDialog({
                 </div>
               </div>
             </div>
+            )}
 
             {/* LLM Evaluation Results */}
             {result.llm_evaluation && (

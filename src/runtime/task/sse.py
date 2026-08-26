@@ -10,6 +10,8 @@ from src.runtime.middleware.base import RuntimeContext, get_middleware_stack
 from src.runtime.task.models import TaskEvent
 from src.runtime.task.service import TaskService
 
+RUNTIME_CLIENT_EVENTS = frozenset({"skill_selected", "skill_loaded", "token_usage"})
+
 
 def parse_sse_chunk(chunk: str) -> tuple[Optional[str], dict[str, Any]]:
     event_type: Optional[str] = None
@@ -47,6 +49,18 @@ def replay_events_as_sse(events: list[TaskEvent]) -> list[str]:
     return [format_sse(event.type, event.payload, seq=event.seq) for event in events]
 
 
+def _collect_runtime_sse(
+    service: TaskService, task_id: str, after_seq: int
+) -> tuple[list[str], int]:
+    extras: list[str] = []
+    latest = after_seq
+    for event in service.list_events(task_id, after_seq=after_seq):
+        latest = event.seq
+        if event.type in RUNTIME_CLIENT_EVENTS:
+            extras.append(format_sse(event.type, event.payload, seq=event.seq))
+    return extras, latest
+
+
 async def persist_workflow_stream(
     service: TaskService,
     task_id: str,
@@ -62,11 +76,28 @@ async def persist_workflow_stream(
         last = messages[-1]
         if isinstance(last, dict):
             user_text = str(last.get("content") or "")
+    opened = service.append_event(
+        task_id,
+        "task",
+        {
+            "task_id": task_id,
+            "thread_id": task.thread_id,
+            "status": task.status.value,
+        },
+    )
+    yield format_sse("task", opened.payload, seq=opened.seq)
+    last_seq = opened.seq
     stack = get_middleware_stack()
     ctx = RuntimeContext(task_id=task_id, extra={"user_id": user_id})
     await stack.ainvoke("before_task", ctx, {"task_id": task_id, "user_id": user_id})
+    first_chunk = True
     try:
         async for chunk in workflow_events:
+            if first_chunk:
+                first_chunk = False
+                extras, last_seq = _collect_runtime_sse(service, task_id, last_seq)
+                for extra in extras:
+                    yield extra
             event_type, payload = parse_sse_chunk(chunk)
             if event_type:
                 service.apply_stream_event(task_id, event_type, payload)
@@ -83,7 +114,13 @@ async def persist_workflow_stream(
                             "user_id": user_id,
                         },
                     )
+            extras, last_seq = _collect_runtime_sse(service, task_id, last_seq)
+            for extra in extras:
+                yield extra
             yield chunk
+        extras, last_seq = _collect_runtime_sse(service, task_id, last_seq)
+        for extra in extras:
+            yield extra
         finished = service.finish_if_running(task_id)
         await stack.ainvoke(
             "after_task",
@@ -96,6 +133,9 @@ async def persist_workflow_stream(
                 "locale": (task.config or {}).get("locale"),
             },
         )
+        extras, _ = _collect_runtime_sse(service, task_id, last_seq)
+        for extra in extras:
+            yield extra
     except Exception as exc:
         current = service.get(task_id)
         if current.status.value != "cancelled":

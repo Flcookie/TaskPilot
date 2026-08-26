@@ -73,6 +73,7 @@ def test_stream_persists_events_and_succeeds(client):
 
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
+    assert "event: task" in response.text
     assert "hi" in response.text
 
     task = client.get(f"/api/tasks/{task_id}").json()

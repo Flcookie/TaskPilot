@@ -16,7 +16,9 @@
     "placeholderWithRag": "What can I do for you? \nYou may refer to RAG resources by using @."
   },
   "header": {
-    "title": "TaskPilot"
+    "title": "TaskPilot",
+    "skill": "Skill",
+    "tokens": "Tokens"
   },
   "hero": {
     "title": "Deep Research",
@@ -166,10 +168,22 @@
     },
     "evaluation": {
       "title": "Report Quality Evaluation",
+      "taskTitle": "Task Evaluation",
       "description": "Evaluate your report using automated metrics and AI analysis.",
+      "taskDescription": "Process metrics from Task events, plus report quality.",
       "evaluating": "Evaluating report...",
       "analyzing": "Running deep analysis...",
       "overallScore": "Overall Score",
+      "processScore": "Process Score",
+      "processMetrics": "Process Metrics",
+      "toolCalls": "Tool Calls",
+      "tokenTotal": "Tokens",
+      "replanCount": "Replans",
+      "recoveryRate": "Recovery",
+      "skillLoading": "Skill Loading",
+      "skillNone": "No Skill",
+      "skillAll": "All Injected",
+      "skillDynamic": "Dynamic",
       "metrics": "Report Metrics",
       "wordCount": "Word Count",
       "citations": "Citations",

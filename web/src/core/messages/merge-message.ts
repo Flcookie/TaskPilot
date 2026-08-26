@@ -44,6 +44,14 @@ function safeParseToolArgs(argsString: string): Record<string, unknown> {
 }
 
 export function mergeMessage(message: Message, event: ChatEvent) {
+  if (
+    event.type === "task" ||
+    event.type === "skill_selected" ||
+    event.type === "skill_loaded" ||
+    event.type === "token_usage"
+  ) {
+    return message;
+  }
   if (event.type === "message_chunk") {
     mergeTextMessage(message, event);
   } else if (event.type === "tool_calls" || event.type === "tool_call_chunks") {

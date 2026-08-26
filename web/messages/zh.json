@@ -16,7 +16,9 @@
     "placeholderWithRag": "我能帮你做什么？\n你可以通过 @ 引用 RAG 资源。"
   },
   "header": {
-    "title": "TaskPilot"
+    "title": "TaskPilot",
+    "skill": "Skill",
+    "tokens": "Tokens"
   },
   "hero": {
     "title": "深度研究",
@@ -166,10 +168,22 @@
     },
     "evaluation": {
       "title": "报告质量评估",
+      "taskTitle": "任务评测",
       "description": "使用自动化指标和 AI 分析评估您的报告。",
+      "taskDescription": "基于 Task 事件的过程指标，以及报告质量。",
       "evaluating": "正在评估报告...",
       "analyzing": "正在进行深度分析...",
       "overallScore": "总体评分",
+      "processScore": "过程评分",
+      "processMetrics": "过程指标",
+      "toolCalls": "工具调用",
+      "tokenTotal": "Token",
+      "replanCount": "再规划次数",
+      "recoveryRate": "失败恢复",
+      "skillLoading": "Skill 加载对照",
+      "skillNone": "不加载",
+      "skillAll": "全量注入",
+      "skillDynamic": "按需加载",
       "metrics": "报告指标",
       "wordCount": "字数",
       "citations": "引用数",

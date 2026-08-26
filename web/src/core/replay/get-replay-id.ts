@@ -8,3 +8,9 @@ export function extractReplayIdFromSearchParams(params: string) {
   }
   return null;
 }
+
+export function extractTaskIdFromSearchParams(params: string) {
+  const urlParams = new URLSearchParams(params);
+  const taskId = urlParams.get("task");
+  return taskId ? taskId : null;
+}

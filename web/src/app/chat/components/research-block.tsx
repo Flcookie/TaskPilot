@@ -69,6 +69,7 @@ export function ResearchBlock({
   const reportStreaming = useStore((state) =>
     reportId ? (state.messages.get(reportId)?.isStreaming ?? false) : false,
   );
+  const taskId = useStore((state) => state.taskId);
   const { isReplay } = useReplay();
   useEffect(() => {
     if (hasReport) {
@@ -820,6 +821,7 @@ ${htmlContent}
           }
           query={getResearchQuery(researchId)}
           reportStyle={useSettingsStore.getState().general.reportStyle.toLowerCase()}
+          taskId={taskId}
         />
       )}
     </div>

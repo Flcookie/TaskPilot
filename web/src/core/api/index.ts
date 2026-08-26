@@ -6,4 +6,5 @@ export * from "./evaluate";
 export * from "./mcp";
 export * from "./podcast";
 export * from "./prompt-enhancer";
+export * from "./tasks";
 export * from "./types";

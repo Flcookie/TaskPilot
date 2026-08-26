@@ -93,6 +93,36 @@ export interface ErrorEvent {
   };
 }
 
+export interface TaskLifecycleEvent {
+  type: "task";
+  data: {
+    task_id: string;
+    thread_id: string;
+    status?: string;
+  };
+}
+
+export interface SkillSelectedEvent {
+  type: "skill_selected" | "skill_loaded";
+  data: {
+    selected_skills?: string[];
+    skill?: string;
+    reason?: string;
+    allowed_tools?: string[];
+  };
+}
+
+export interface TokenUsageEvent {
+  type: "token_usage";
+  data: {
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+    total_tokens?: number | null;
+    estimated?: boolean;
+    node?: string | null;
+  };
+}
+
 export type ChatEvent =
   | MessageChunkEvent
   | ToolCallsEvent
@@ -100,4 +130,7 @@ export type ChatEvent =
   | ToolCallResultEvent
   | InterruptEvent
   | CitationsEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | TaskLifecycleEvent
+  | SkillSelectedEvent
+  | TokenUsageEvent;

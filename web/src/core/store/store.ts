@@ -18,6 +18,9 @@ const THREAD_ID = nanoid();
 export const useStore = create<{
   responding: boolean;
   threadId: string | undefined;
+  taskId: string | null;
+  selectedSkills: string[];
+  tokenTotal: number;
   messageIds: string[];
   messages: Map<string, Message>;
   researchIds: string[];
@@ -39,6 +42,9 @@ export const useStore = create<{
 }>((set) => ({
   responding: false,
   threadId: THREAD_ID,
+  taskId: null,
+  selectedSkills: [],
+  tokenTotal: 0,
   messageIds: [],
   messages: new Map<string, Message>(),
   researchIds: [],
@@ -136,6 +142,7 @@ export async function sendMessage(
   );
 
   setResponding(true);
+  useStore.setState({ taskId: null, selectedSkills: [], tokenTotal: 0 });
   let messageId: string | undefined;
   const pendingUpdates = new Map<string, Message>();
   let updateTimer: NodeJS.Timeout | undefined;
@@ -155,6 +162,28 @@ export async function sendMessage(
     for await (const event of stream) {
       const { type, data } = event;
       let message: Message | undefined;
+
+      if (type === "task") {
+        useStore.setState({ taskId: data.task_id });
+        continue;
+      }
+      if (type === "skill_selected" || type === "skill_loaded") {
+        const skills =
+          data.selected_skills ?? (data.skill ? [data.skill] : []);
+        if (skills.length > 0) {
+          useStore.setState({ selectedSkills: skills });
+        }
+        continue;
+      }
+      if (type === "token_usage") {
+        const increment = data.total_tokens ?? 0;
+        if (increment) {
+          useStore.setState((state) => ({
+            tokenTotal: state.tokenTotal + increment,
+          }));
+        }
+        continue;
+      }
 
       if (type === "error") {
         // Server sent an error event - check if it's user cancellation
@@ -185,6 +214,8 @@ export async function sendMessage(
           }
           continue; // Skip this event
         }
+      } else if (!("id" in data) || !data.id) {
+        continue;
       } else {
         // For other event types, use data.id
         messageId = data.id;
