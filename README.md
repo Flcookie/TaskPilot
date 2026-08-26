@@ -2,14 +2,20 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/Flcookie/TaskPilot/actions/workflows/lint.yaml/badge.svg)](https://github.com/Flcookie/TaskPilot/actions)
 
 [English](./README.md) | [简体中文](./README_zh.md)
 
-**TaskPilot** is a multi-agent runtime for complex research and task execution. It combines language models with specialized tools for web search, crawling, Python code execution, and MCP services, then turns the results into reports, podcasts, and presentations.
+**TaskPilot** is a lightweight Agent Runtime for complex task execution.
+
+Every request is an explicit **Task**: create, run, interrupt, resume, cancel, replay, and evaluate. Events are persisted and streamed over SSE. Skills, tools, memory, and middleware sit around the execution engine — they are not baked into a single research graph.
+
+The bundled Plan-Execute / DeepResearch graph is one **Workflow** on this runtime. Reports, podcasts, and slides are workflow outputs, not the product itself.
 
 ## Contents
 
 - [Architecture](#architecture)
+- [Runtime](#runtime)
 - [Features](#features)
 - [Examples and usage](#examples-and-usage)
 - [Getting started](#getting-started)
@@ -23,94 +29,127 @@
 
 ## Architecture
 
-TaskPilot implements a modular multi-agent system architecture designed for automated research and code analysis. The system is built on LangGraph, enabling a flexible state-based workflow where components communicate through a well-defined message passing system.
+```
+Client (Web UI / CLI)
+        │
+        ▼
+FastAPI
+  /api/tasks*           explicit task lifecycle
+  /api/chat/stream      compatible streaming entry
+        │
+        ▼
+TaskPilot Runtime
+  TaskService · EventStore · Middleware · ToolRegistry
+  Skill (lazy load) · Memory · Evaluation · process isolation
+        │
+        ▼
+LangGraph Workflows
+  DeepResearch · podcast · presentation · …
+        │
+        ▼
+TaskEvent log  →  SSE live / replay (?task=) / evaluate
+```
+
+The runtime owns lifecycle, observability, and policy. LangGraph owns graph execution. `/api/chat/stream` remains a compatible entry; new work should go through `/api/tasks`.
+
+### DeepResearch workflow
+
+The default workflow is a Plan-Execute graph. It is a Workflow implementation, not the runtime.
 
 ![Architecture Diagram](./assets/architecture.png)
 
-> See the architecture diagram below.
+1. **Coordinator** — entry node; starts the run and hands off to planning
+2. **Planner** — decomposes the goal into steps; may loop until the plan is accepted
+3. **Research team** — executes steps with role-specific tools
+   - **Researcher**: search, crawl, RAG, MCP
+   - **Coder**: Python execution
+4. **Reporter** — synthesizes findings into the final artifact
 
-The system employs a streamlined workflow with the following components:
+Human-in-the-loop can pause after planning so you can accept or edit the plan before execution continues.
 
-1. **Coordinator**: The entry point that manages the workflow lifecycle
+## Runtime
 
-   - Initiates the research process based on user input
-   - Delegates tasks to the planner when appropriate
-   - Acts as the primary interface between the user and the system
+### Task lifecycle
 
-2. **Planner**: Strategic component for task decomposition and planning
+Statuses: `pending` → `running` → `interrupted` | `succeeded` | `failed` | `cancelled`.
 
-   - Analyzes research objectives and creates structured execution plans
-   - Determines if enough context is available or if more research is needed
-   - Manages the research flow and decides when to generate the final report
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/tasks` | Create a task (default workflow: `deep_research`) |
+| `GET` | `/api/tasks/{id}` | Status and metadata |
+| `GET` | `/api/tasks/{id}/events` | Persisted event log (`after_seq` for paging) |
+| `GET` | `/api/tasks/{id}/stream` | Start or continue SSE (`Last-Event-ID` for resume) |
+| `POST` | `/api/tasks/{id}/cancel` | Cancel a running or pending task |
+| `POST` | `/api/tasks/{id}/resume` | Resume after interrupt / failure |
+| `POST` | `/api/tasks/{id}/replay` | Replay stored events as SSE |
+| `POST` | `/api/tasks/{id}/evaluate` | Process + report + skill-loading scores |
 
-3. **Research Team**: A collection of specialized agents that execute the plan:
-   - **Researcher**: Conducts web searches and information gathering using tools like web search engines, crawling and even MCP services.
-   - **Coder**: Handles code analysis, execution, and technical tasks using Python REPL tool.
-     Each agent has access to specific tools optimized for their role and operates within the LangGraph framework
+Web replay: open `http://localhost:3000/chat?task=<task_id>`.
 
-4. **Reporter**: Final stage processor for research outputs
-   - Aggregates findings from the research team
-   - Processes and structures the collected information
-   - Generates comprehensive research reports
+Task and event persistence defaults to SQLite (`TASK_STORE_URL=sqlite:///data/tasks.sqlite`). Tests use `memory://`.
+
+### Middleware
+
+Hooks are subscription points (`before_task`, `before_tool`, `after_llm`, `on_error`, …). Default stack:
+
+`audit → skill → context_inject → token_accounting → tool_guard → memory_write`
+
+Memory is a store, not a middleware. `context_inject` writes retrieved memory into prompts; `memory_write` persists new facts asynchronously.
+
+### Skill
+
+A Skill is a reusable execution policy: description, tags, and `allowed_tools` (the **visible** tool set for that run). Skills load lazily; v1 does not compose skills.
+
+| Skill | When to use |
+|---|---|
+| `deep_research` | Multi-source investigation and reports |
+| `data_analysis` | Numbers, comparison, Python-heavy work |
+| `report_writing` | Structure existing material into a document |
+
+### Memory
+
+Three layers: **preference**, **background**, **fact**. Default store: `MEMORY_STORE_URL=sqlite:///data/memory.sqlite`.
+
+### Evaluation and isolation
+
+- **Process metrics**: plan quality, tool choice, recovery from failure
+- **Report metrics**: existing report-quality judge
+- **Skill loading compare**: token/latency with vs without lazy skill load
+- **Python isolation**: code runs in a subprocess. This is process isolation, not a security sandbox.
 
 ## Features
 
-### Core Capabilities
+### Runtime
 
-- 🤖 **LLM Integration**
-  - It supports the integration of most models through [litellm](https://docs.litellm.ai/docs/providers).
-  - Support for open source models like Qwen, you need to read the [configuration](docs/configuration_guide.md) for more details.
-  - OpenAI-compatible API interface
-  - Multi-tier LLM system for different task complexities
+- Explicit Task objects with event logs, SSE resume, and replay
+- Hook-based middleware (audit, skill policy, token accounting, tool guard)
+- Unified `ToolRegistry` + `ToolResult` contract for built-in tools and MCP
+- Skill lazy load with per-skill `allowed_tools`
+- Long-term memory (preference / background / fact)
+- Agent evaluation (process + report + skill loading)
+- LLM via [litellm](https://docs.litellm.ai/docs/providers), including OpenAI-compatible and open-source models such as Qwen — see [configuration](docs/configuration_guide.md)
 
-### Tools and MCP Integrations
+### Tools and MCP
 
-- 🔍 **Search and Retrieval**
-  - Web search via Tavily, InfoQuest, Brave Search and more
-  - Crawling with Jina and InfoQuest
-  - Advanced content extraction
-  - Support for private knowledgebase
+- 🔍 **Search and retrieval** — Tavily, InfoQuest, Brave Search, crawl (Jina / InfoQuest), private knowledge bases
+- 📃 **RAG** — [Qdrant](https://qdrant.tech/), [Milvus](https://milvus.io/), [RAGFlow](https://github.com/infiniflow/ragflow), VikingDB, MOI, Dify; mention files from RAG providers in the input box
+- 🔗 **MCP** — extra tools for private APIs, knowledge graphs, browsing, and more
 
-- 📃 **RAG Integration**
+### Human collaboration
 
-  - Supports multiple vector databases: [Qdrant](https://qdrant.tech/), [Milvus](https://milvus.io/), [RAGFlow](https://github.com/infiniflow/ragflow), VikingDB, MOI, and Dify
-  - Supports mentioning files from RAG providers within the input box
-  - Easy switching between different vector databases through configuration
+- 💬 **Clarification** — multi-turn questions before a vague task is planned ([guide](./docs/configuration_guide.md#multi-turn-clarification-feature))
+- 🧠 **Human-in-the-loop** — accept or edit the plan in natural language, or auto-accept
+- 📝 **Report editing** — Notion-like blocks with AI polish / shorten / expand ([tiptap](https://tiptap.dev/))
 
-- 🔗 **MCP Seamless Integration**
-  - Expand capabilities for private domain access, knowledge graph, web browsing and more
-  - Facilitates integration of diverse research tools and methodologies
+### Workflow outputs
 
-### Human Collaboration
-
-- 💬 **Intelligent Clarification Feature**
-  - Multi-turn dialogue to clarify vague research topics
-  - Improve research precision and report quality
-  - Reduce ineffective searches and token usage
-  - Configurable switch for flexible enable/disable control
-  - See [Configuration Guide - Clarification](./docs/configuration_guide.md#multi-turn-clarification-feature) for details
-
-- 🧠 **Human-in-the-loop**
-  - Supports interactive modification of research plans using natural language
-  - Supports auto-acceptance of research plans
-
-- 📝 **Report Post-Editing**
-  - Supports Notion-like block editing
-  - Allows AI refinements, including AI-assisted polishing, sentence shortening, and expansion
-  - Powered by [tiptap](https://tiptap.dev/)
-
-### Content Creation
-
-- 🎙️ **Podcast and Presentation Generation**
-  - AI-powered podcast script generation and audio synthesis
-  - Automated creation of simple PowerPoint presentations
-  - Customizable templates for tailored content
+- 🎙️ **Podcast and presentation** — script + TTS audio, and simple PowerPoint from the same task run
 
 ## Examples and usage
 
-The following examples demonstrate the capabilities of TaskPilot:
+These samples are DeepResearch **workflow** outputs — they show one Skill/Workflow on the runtime, not the whole product:
 
-### Research Reports
+### DeepResearch workflow samples
 
 1. **OpenAI Sora Report** - Analysis of OpenAI's Sora AI tool
 
@@ -157,7 +196,7 @@ The following examples demonstrate the capabilities of TaskPilot:
    - Discusses his career achievements, international goals, and performance in various matches
    - [View full report](examples/Cristiano_Ronaldo's_Performance_Highlights.md)
 
-To run these examples or create your own research reports, you can use the following commands:
+To run these DeepResearch workflow examples, or start your own task from the CLI:
 
 ```bash
 # Run with a specific query
@@ -194,9 +233,9 @@ The application now supports an interactive mode with built-in questions in both
 
 ### Human in the Loop
 
-TaskPilot includes a human in the loop mechanism that allows you to review, edit, and approve research plans before they are executed:
+When the DeepResearch workflow has human-in-the-loop enabled, you can review, edit, and approve the plan before execution:
 
-1. **Plan Review**: When human in the loop is enabled, the system will present the generated research plan for your review before execution
+1. **Plan Review**: The generated plan is presented for review before the workflow continues
 
 2. **Providing Feedback**: You can:
 
@@ -255,8 +294,8 @@ Make sure your system meets the following minimum requirements:
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd task-pilot
+git clone https://github.com/Flcookie/TaskPilot.git
+cd TaskPilot
 
 # Install dependencies, uv will take care of the python interpreter and venv creation, and install the required packages
 uv sync
@@ -282,7 +321,7 @@ brew install marp-cli
 Optionally, install web UI dependencies via [pnpm](https://pnpm.io/installation):
 
 ```bash
-cd task-pilot/web
+cd web
 pnpm install
 ```
 
@@ -292,6 +331,15 @@ Please refer to the [Configuration Guide](docs/configuration_guide.md) for more 
 
 > [!NOTE]
 > Before you start the project, read the guide carefully, and update the configurations to match your specific settings and requirements.
+
+Task and memory stores default to SQLite so replay and long-term memory survive a restart. Override in `.env` if needed:
+
+```bash
+TASK_STORE_URL=sqlite:///data/tasks.sqlite
+MEMORY_STORE_URL=sqlite:///data/memory.sqlite
+# TASK_STORE_URL=memory://
+# MEMORY_STORE_URL=memory://
+```
 
 ### Console UI
 
@@ -323,7 +371,25 @@ bootstrap.bat -d
 
 Open your browser and visit [`http://localhost:3000`](http://localhost:3000) to explore the web UI.
 
+Replay a finished run with `http://localhost:3000/chat?task=<task_id>`.
+
 Explore more details in the [`web`](./web/) directory.
+
+### Task API
+
+After the backend is up (`http://localhost:8000`):
+
+```bash
+# Create a task (DeepResearch is the default workflow)
+curl -s -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What is MCP?"}],"auto_accepted_plan":true}'
+
+# Stream execution (replace TASK_ID)
+curl -N http://localhost:8000/api/tasks/TASK_ID/stream
+```
+
+See [Runtime](#runtime) for cancel / resume / replay / evaluate.
 
 ## Search, crawl, and knowledgebase
 
@@ -598,8 +664,12 @@ TaskPilot supports LangSmith tracing to help you debug and monitor your workflow
 
 This will enable trace visualization in LangGraph Studio and send your traces to LangSmith for monitoring and analysis.
 
+### Task event store
+
+Task metadata and SSE events persist independently of LangGraph checkpoints. Default is SQLite (`TASK_STORE_URL`). Replay uses this log (`POST /api/tasks/{id}/replay` or `?task=` in the Web UI), not the LangGraph checkpoint.
+
 ### Checkpointing
-1. Postgres and MongoDB implementation of LangGraph checkpoint saver.
+1. Postgres and MongoDB implementation of LangGraph checkpoint saver (graph state, not the Task event log).
 2. In-memory store is used to cache the streaming messages before persisting to database; If finish_reason is "stop" or "interrupt", it triggers persistence.
 3. Supports saving and loading checkpoints for workflow execution.
 4. Supports saving chat stream events for replaying conversations.
@@ -648,13 +718,11 @@ This project is open source and available under the [MIT License](./LICENSE).
 
 ## Acknowledgments
 
-TaskPilot is built upon the incredible work of the open-source community. We are deeply grateful to all the projects and contributors whose efforts have made TaskPilot possible.
+TaskPilot re-abstracts a Task Runtime around a Plan-Execute / DeepResearch workflow: the research graph is a Workflow; Task/Event, Middleware, Tool Registry, Skill, Memory, Observability, Evaluation, and process isolation are the runtime.
 
-We would like to extend our sincere appreciation to the following projects for their invaluable contributions:
+We are grateful to the open-source projects this stack builds on:
 
-- **[LangChain](https://github.com/langchain-ai/langchain)**: Their exceptional framework powers our LLM interactions and chains, enabling seamless integration and functionality.
-- **[LangGraph](https://github.com/langchain-ai/langgraph)**: Their innovative approach to multi-agent orchestration has been instrumental in enabling TaskPilot's sophisticated workflows.
-- **[Novel](https://github.com/steven-tey/novel)**: Their Notion-style WYSIWYG editor supports our report editing and AI-assisted rewriting.
-- **[RAGFlow](https://github.com/infiniflow/ragflow)**: We have achieved support for research on users' private knowledge bases through integration with RAGFlow.
-
-These projects exemplify the transformative power of open-source collaboration, and we are proud to build upon their foundations.
+- **[LangChain](https://github.com/langchain-ai/langchain)**: LLM interfaces, agents, and tool calling.
+- **[LangGraph](https://github.com/langchain-ai/langgraph)**: stateful workflow execution used by bundled graphs.
+- **[Novel](https://github.com/steven-tey/novel)**: Notion-style editor for report post-editing.
+- **[RAGFlow](https://github.com/infiniflow/ragflow)**: private knowledge-base retrieval.

@@ -2,14 +2,22 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/Flcookie/TaskPilot/actions/workflows/lint.yaml/badge.svg)](https://github.com/Flcookie/TaskPilot/actions)
 
 [English](./README.md) | [简体中文](./README_zh.md)
 
-**TaskPilot** 是面向复杂研究与任务执行的多智能体运行时。它将语言模型与网络搜索、爬虫、Python 代码执行和 MCP 服务等工具结合，并把结果整理成报告、播客和演示文稿。
+**TaskPilot** 是面向复杂任务执行的轻量 Agent Runtime。
+
+每一次请求都是一个显式 **Task**：创建、运行、中断、恢复、取消、回放、评测。事件写入日志并通过 SSE 推送。Skill、工具、记忆和中间件围绕执行引擎工作，而不是写死在一张调研图里。
+
+内置的 Plan-Execute / DeepResearch 图是 Runtime 上的一种 **Workflow**。报告、播客、PPT 是工作流产物，不是产品本身。
+
+参考 Plan-Execute / DeepResearch 工作流实现，在此基础上重新抽象 Task Runtime，将研究图下沉为 Workflow，通过 Task/Event、Middleware、Tool Registry、Skill、Long-term Memory、Observability、Evaluation 和进程隔离构建通用复杂任务执行框架。
 
 ## 目录
 
 - [架构](#架构)
+- [Runtime](#runtime)
 - [特性](#特性)
 - [示例与用法](#示例与用法)
 - [开始使用](#开始使用)
@@ -23,92 +31,127 @@
 
 ## 架构
 
-TaskPilot 实现了一个模块化的多智能体系统架构，专为自动化研究和代码分析而设计。该系统基于 LangGraph 构建，实现了灵活的基于状态的工作流，其中组件通过定义良好的消息传递系统进行通信。
+```
+客户端（Web UI / CLI）
+        │
+        ▼
+FastAPI
+  /api/tasks*           显式任务生命周期
+  /api/chat/stream      兼容流式入口
+        │
+        ▼
+TaskPilot Runtime
+  TaskService · EventStore · Middleware · ToolRegistry
+  Skill（按需加载） · Memory · Evaluation · 进程隔离
+        │
+        ▼
+LangGraph Workflows
+  DeepResearch · podcast · presentation · …
+        │
+        ▼
+TaskEvent 日志  →  SSE 实时 / 回放（?task=） / 评测
+```
+
+Runtime 负责任务生命周期、可观测性和策略；LangGraph 负责图执行。`/api/chat/stream` 仍可作为兼容入口；新接入请走 `/api/tasks`。
+
+### DeepResearch 工作流
+
+默认工作流是 Plan-Execute 图。它是一种 Workflow 实现，不是 Runtime 本身。
 
 ![架构图](./assets/architecture.png)
 
-> 见下方架构图。
+1. **协调器** — 入口节点，启动运行并交给规划
+2. **规划器** — 把目标拆成步骤，计划被接受前可循环修订
+3. **研究团队** — 按角色工具执行步骤
+   - **研究员**：搜索、爬取、RAG、MCP
+   - **编码员**：Python 执行
+4. **报告员** — 汇总发现，生成最终产物
 
-系统采用了精简的工作流程，包含以下组件：
+人在环中可以在规划后暂停，接受或修改计划后再继续执行。
 
-1. **协调器**：管理工作流生命周期的入口点
+## Runtime
 
-   - 根据用户输入启动研究过程
-   - 在适当时候将任务委派给规划器
-   - 作为用户和系统之间的主要接口
+### 任务生命周期
 
-2. **规划器**：负责任务分解和规划的战略组件
+状态：`pending` → `running` → `interrupted` | `succeeded` | `failed` | `cancelled`。
 
-   - 分析研究目标并创建结构化执行计划
-   - 确定是否有足够的上下文或是否需要更多研究
-   - 管理研究流程并决定何时生成最终报告
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| `POST` | `/api/tasks` | 创建任务（默认工作流：`deep_research`） |
+| `GET` | `/api/tasks/{id}` | 状态与元数据 |
+| `GET` | `/api/tasks/{id}/events` | 事件日志（`after_seq` 分页） |
+| `GET` | `/api/tasks/{id}/stream` | 启动或续传 SSE（`Last-Event-ID` 续流） |
+| `POST` | `/api/tasks/{id}/cancel` | 取消运行中或待执行任务 |
+| `POST` | `/api/tasks/{id}/resume` | 中断 / 失败后恢复 |
+| `POST` | `/api/tasks/{id}/replay` | 将已存事件回放为 SSE |
+| `POST` | `/api/tasks/{id}/evaluate` | 过程 + 报告 + Skill 加载对照 |
 
-3. **研究团队**：执行计划的专业智能体集合：
-   - **研究员**：使用网络搜索引擎、爬虫甚至 MCP 服务等工具进行网络搜索和信息收集。
-   - **编码员**：使用 Python REPL 工具处理代码分析、执行和技术任务。
-   每个智能体都可以访问针对其角色优化的特定工具，并在 LangGraph 框架内运行
+Web 回放：打开 `http://localhost:3000/chat?task=<task_id>`。
 
-4. **报告员**：研究输出的最终阶段处理器
-   - 汇总研究团队的发现
-   - 处理和组织收集的信息
-   - 生成全面的研究报告
+任务与事件默认写入 SQLite（`TASK_STORE_URL=sqlite:///data/tasks.sqlite`）。测试使用 `memory://`。
+
+### 中间件
+
+Hook 是订阅点（`before_task`、`before_tool`、`after_llm`、`on_error` 等）。默认栈：
+
+`audit → skill → context_inject → token_accounting → tool_guard → memory_write`
+
+Memory 是存储，不是中间件。`context_inject` 把检索到的记忆写入 prompt；`memory_write` 异步落盘新事实。
+
+### Skill
+
+Skill 是可复用的执行策略：描述、标签，以及 `allowed_tools`（该次运行的**可见**工具集）。Skill 按需加载；v1 不做 Skill 组合。
+
+| Skill | 适用场景 |
+|---|---|
+| `deep_research` | 多信源调研与报告 |
+| `data_analysis` | 数值、对比、偏 Python 的任务 |
+| `report_writing` | 在已有材料上结构化成文 |
+
+### Memory
+
+三层：**preference**（偏好）、**background**（任务背景）、**fact**（事实）。默认存储：`MEMORY_STORE_URL=sqlite:///data/memory.sqlite`。
+
+### 评测与隔离
+
+- **过程指标**：计划质量、工具选择、失败恢复
+- **报告指标**：原有报告质量评估
+- **Skill 加载对照**：按需加载 vs 全量加载的 token / 延迟
+- **Python 隔离**：代码在子进程中执行。这是进程隔离，不是安全沙箱。
 
 ## 特性
 
-### 核心能力
+### Runtime
 
-- 🤖 **LLM 集成**
-  - 通过[litellm](https://docs.litellm.ai/docs/providers)支持集成大多数模型
-  - 支持开源模型如 Qwen
-  - 兼容 OpenAI 的 API 接口
-  - 多层 LLM 系统适用于不同复杂度的任务
+- 显式 Task：事件日志、SSE 续流与回放
+- 基于 Hook 的中间件（审计、Skill 策略、Token 统计、工具兜底）
+- 统一 `ToolRegistry` + `ToolResult`，覆盖内置工具与 MCP
+- Skill 按需加载，按 Skill 限制 `allowed_tools`
+- 长期记忆（偏好 / 背景 / 事实）
+- Agent 评测（过程 + 报告 + Skill 加载）
+- 通过 [litellm](https://docs.litellm.ai/docs/providers) 接入多数模型，含 OpenAI 兼容接口与 Qwen 等开源模型，详见 [配置指南](docs/configuration_guide.md)
 
-### 工具和 MCP 集成
+### 工具和 MCP
 
-- 🔍 **搜索和检索**
-  - 通过 Tavily、InfoQuest、Brave Search 等进行网络搜索
-  - 使用 Jina、InfoQuest 进行爬取
-  - 高级内容提取
-  - 支持检索指定私有知识库
-
-- 📃 **RAG 集成**
-  - 支持 [RAGFlow](https://github.com/infiniflow/ragflow) 知识库
-  - 支持 VikingDB 知识库
-
-- 🔗 **MCP 无缝集成**
-  - 扩展私有域访问、知识图谱、网页浏览等能力
-  - 促进多样化研究工具和方法的集成
+- 🔍 **搜索和检索** — Tavily、InfoQuest、Brave Search，Jina / InfoQuest 爬取，私有知识库
+- 📃 **RAG** — [Qdrant](https://qdrant.tech/)、[Milvus](https://milvus.io/)、[RAGFlow](https://github.com/infiniflow/ragflow)、VikingDB、MOI、Dify；输入框可 @ 知识库文件
+- 🔗 **MCP** — 扩展私有 API、知识图谱、浏览等能力
 
 ### 人机协作
 
-- 💬 **智能澄清功能**
-  - 多轮对话澄清模糊的研究主题
-  - 提高研究精准度和报告质量
-  - 减少无效搜索和 token 使用
-  - 可配置开关，灵活控制启用/禁用
-  - 详见 [配置指南 - 澄清功能](./docs/configuration_guide.md#multi-turn-clarification-feature)
+- 💬 **智能澄清** — 模糊任务规划前多轮确认（[指南](./docs/configuration_guide.md#multi-turn-clarification-feature)）
+- 🧠 **人在环中** — 用自然语言接受或修改计划，也可自动接受
+- 📝 **报告后期编辑** — 类 Notion 块编辑，支持 AI 润色 / 缩短 / 扩展（[tiptap](https://tiptap.dev/)）
 
-- 🧠 **人在环中**
-  - 支持使用自然语言交互式修改研究计划
-  - 支持自动接受研究计划
+### 工作流产物
 
-- 📝 **报告后期编辑**
-  - 支持类 Notion 的块编辑
-  - 允许 AI 优化，包括 AI 辅助润色、句子缩短和扩展
-  - 由[tiptap](https://tiptap.dev/)提供支持
-
-### 内容创作
-
-- 🎙️ **播客和演示文稿生成**
-  - AI 驱动的播客脚本生成和音频合成
-  - 自动创建简单的 PowerPoint 演示文稿
-  - 可定制模板以满足个性化内容需求
+- 🎙️ **播客和演示文稿** — 同一任务可生成脚本 + TTS 音频，以及简单 PPT
 
 ## 示例与用法
 
-以下示例展示了 TaskPilot 的功能：
+以下样本是 DeepResearch **工作流**的产物，用来展示 Runtime 上的一种 Skill/Workflow，而不是整个产品：
 
-### 研究报告
+### DeepResearch 工作流样本
 
 1. **OpenAI Sora 报告** - OpenAI 的 Sora AI 工具分析
    - 讨论功能、访问方式、提示工程、限制和伦理考虑
@@ -149,7 +192,7 @@ TaskPilot 实现了一个模块化的多智能体系统架构，专为自动化�
    - 讨论他的职业成就、国际进球和在各种比赛中的表现
    - [查看完整报告](examples/Cristiano_Ronaldo's_Performance_Highlights.md)
 
-要运行这些示例或创建您自己的研究报告，您可以使用以下命令：
+要运行这些 DeepResearch 工作流示例，或从命令行发起自己的任务：
 
 ```bash
 # 使用特定查询运行
@@ -182,13 +225,13 @@ uv run main.py --help
 
 3. 从内置问题列表中选择或选择提出您自己问题的选项
 
-4. 系统将处理您的问题并生成全面的研究报告
+4. 系统将按 DeepResearch 工作流处理问题并生成报告
 
 ### 人在环中
 
-TaskPilot 包含一个人在环中机制，允许您在执行研究计划前审查、编辑和批准：
+DeepResearch 工作流启用人在环中时，你可以在执行前审查、编辑和批准计划：
 
-1. **计划审查**：启用人在环中时，系统将在执行前向您展示生成的研究计划
+1. **计划审查**：生成的计划会先展示给你，确认后再继续执行
 
 2. **提供反馈**：您可以：
 
@@ -246,8 +289,8 @@ TaskPilot 使用 Python 开发，并配有用 Node.js 编写的 Web UI。为确�
 
 ```bash
 # 克隆仓库
-git clone <repository-url>
-cd task-pilot
+git clone https://github.com/Flcookie/TaskPilot.git
+cd TaskPilot
 
 # 安装依赖，uv将负责Python解释器和虚拟环境的创建，并安装所需的包
 uv sync
@@ -272,7 +315,7 @@ brew install marp-cli
 可选，通过[pnpm](https://pnpm.io/installation)安装 Web UI 依赖：
 
 ```bash
-cd task-pilot/web
+cd web
 pnpm install
 ```
 
@@ -282,6 +325,15 @@ pnpm install
 
 > [! 注意]
 > 在启动项目之前，请仔细阅读指南，并更新配置以匹配您的特定设置和要求。
+
+任务与记忆默认写入 SQLite，重启后仍可回放任务、读取长期记忆。可在 `.env` 中覆盖：
+
+```bash
+TASK_STORE_URL=sqlite:///data/tasks.sqlite
+MEMORY_STORE_URL=sqlite:///data/memory.sqlite
+# TASK_STORE_URL=memory://
+# MEMORY_STORE_URL=memory://
+```
 
 ### 控制台 UI
 
@@ -312,7 +364,25 @@ bootstrap.bat -d
 
 打开浏览器并访问[`http://localhost:3000`](http://localhost:3000)探索 Web UI。
 
+回放已完成的任务：`http://localhost:3000/chat?task=<task_id>`。
+
 在[`web`](./web/)目录中探索更多详情。
+
+### Task API
+
+后端启动后（`http://localhost:8000`）：
+
+```bash
+# 创建任务（默认工作流为 DeepResearch）
+curl -s -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"什么是 MCP？"}],"auto_accepted_plan":true}'
+
+# 流式执行（替换 TASK_ID）
+curl -N http://localhost:8000/api/tasks/TASK_ID/stream
+```
+
+取消 / 恢复 / 回放 / 评测见 [Runtime](#runtime)。
 
 ## 搜索、爬取与知识库
 
@@ -602,11 +672,11 @@ TaskPilot 支持 LangSmith 追踪功能，帮助您调试和监控工作流。�
 
 ## 致谢
 
-TaskPilot 建立在开源社区的杰出工作基础之上。我们深深感谢所有使 TaskPilot 成为可能的项目和贡献者。
+TaskPilot 在 Plan-Execute / DeepResearch 工作流之上重新抽象了 Task Runtime：研究图是一种 Workflow；Task/Event、Middleware、Tool Registry、Skill、Memory、Observability、Evaluation 和进程隔离才是 Runtime。
 
-我们要向以下项目表达诚挚的感谢，感谢他们的宝贵贡献：
+感谢以下开源项目：
 
-- **[LangChain](https://github.com/langchain-ai/langchain)**：他们卓越的框架为我们的 LLM 交互和链提供动力，实现了无缝集成和功能。
-- **[LangGraph](https://github.com/langchain-ai/langgraph)**：他们在多智能体编排方面的创新方法对于实现 TaskPilot 复杂工作流至关重要。
-
-这些项目展示了开源协作的变革力量，我们很自豪能够在他们的基础上构建。
+- **[LangChain](https://github.com/langchain-ai/langchain)**：LLM 接口、Agent 与工具调用。
+- **[LangGraph](https://github.com/langchain-ai/langgraph)**：内置图所用的有状态工作流执行。
+- **[Novel](https://github.com/steven-tey/novel)**：报告后期编辑所用的类 Notion 编辑器。
+- **[RAGFlow](https://github.com/infiniflow/ragflow)**：私有知识库检索。
