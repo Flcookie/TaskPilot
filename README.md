@@ -17,7 +17,6 @@ The bundled Plan-Execute / DeepResearch graph is one **Workflow** on this runtim
 - [Architecture](#architecture)
 - [Runtime](#runtime)
 - [Features](#features)
-- [Examples and usage](#examples-and-usage)
 - [Getting started](#getting-started)
 - [Search, crawl, and knowledgebase](#search-crawl-and-knowledgebase)
 - [Text-to-speech](#text-to-speech)
@@ -51,21 +50,6 @@ TaskEvent log  →  SSE live / replay (?task=) / evaluate
 ```
 
 The runtime owns lifecycle, observability, and policy. LangGraph owns graph execution. `/api/chat/stream` remains a compatible entry; new work should go through `/api/tasks`.
-
-### DeepResearch workflow
-
-The default workflow is a Plan-Execute graph. It is a Workflow implementation, not the runtime.
-
-![Architecture Diagram](./assets/architecture.png)
-
-1. **Coordinator** — entry node; starts the run and hands off to planning
-2. **Planner** — decomposes the goal into steps; may loop until the plan is accepted
-3. **Research team** — executes steps with role-specific tools
-   - **Researcher**: search, crawl, RAG, MCP
-   - **Coder**: Python execution
-4. **Reporter** — synthesizes findings into the final artifact
-
-Human-in-the-loop can pause after planning so you can accept or edit the plan before execution continues.
 
 ## Runtime
 
@@ -144,129 +128,6 @@ Three layers: **preference**, **background**, **fact**. Default store: `MEMORY_S
 ### Workflow outputs
 
 - 🎙️ **Podcast and presentation** — script + TTS audio, and simple PowerPoint from the same task run
-
-## Examples and usage
-
-These samples are DeepResearch **workflow** outputs — they show one Skill/Workflow on the runtime, not the whole product:
-
-### DeepResearch workflow samples
-
-1. **OpenAI Sora Report** - Analysis of OpenAI's Sora AI tool
-
-   - Discusses features, access, prompt engineering, limitations, and ethical considerations
-   - [View full report](examples/openai_sora_report.md)
-
-2. **Google's Agent to Agent Protocol Report** - Overview of Google's Agent to Agent (A2A) protocol
-
-   - Discusses its role in AI agent communication and its relationship with Anthropic's Model Context Protocol (MCP)
-   - [View full report](examples/what_is_agent_to_agent_protocol.md)
-
-3. **What is MCP?** - A comprehensive analysis of the term "MCP" across multiple contexts
-
-   - Explores Model Context Protocol in AI, Monocalcium Phosphate in chemistry, and Micro-channel Plate in electronics
-   - [View full report](examples/what_is_mcp.md)
-
-4. **Bitcoin Price Fluctuations** - Analysis of recent Bitcoin price movements
-
-   - Examines market trends, regulatory influences, and technical indicators
-   - Provides recommendations based on historical data
-   - [View full report](examples/bitcoin_price_fluctuation.md)
-
-5. **What is LLM?** - An in-depth exploration of Large Language Models
-
-   - Discusses architecture, training, applications, and ethical considerations
-   - [View full report](examples/what_is_llm.md)
-
-6. **How to Use Claude for Deep Research?** - Best practices and workflows for using Claude in deep research
-
-   - Covers prompt engineering, data analysis, and integration with other tools
-   - [View full report](examples/how_to_use_claude_deep_research.md)
-
-7. **AI Adoption in Healthcare: Influencing Factors** - Analysis of factors driving AI adoption in healthcare
-
-   - Discusses AI technologies, data quality, ethical considerations, economic evaluations, organizational readiness, and digital infrastructure
-   - [View full report](examples/AI_adoption_in_healthcare.md)
-
-8. **Quantum Computing Impact on Cryptography** - Analysis of quantum computing's impact on cryptography
-
-   - Discusses vulnerabilities of classical cryptography, post-quantum cryptography, and quantum-resistant cryptographic solutions
-   - [View full report](examples/Quantum_Computing_Impact_on_Cryptography.md)
-
-9. **Cristiano Ronaldo's Performance Highlights** - Analysis of Cristiano Ronaldo's performance highlights
-   - Discusses his career achievements, international goals, and performance in various matches
-   - [View full report](examples/Cristiano_Ronaldo's_Performance_Highlights.md)
-
-To run these DeepResearch workflow examples, or start your own task from the CLI:
-
-```bash
-# Run with a specific query
-uv run main.py "What factors are influencing AI adoption in healthcare?"
-
-# Run with custom planning parameters
-uv run main.py --max_plan_iterations 3 "How does quantum computing impact cryptography?"
-
-# Run in interactive mode with built-in questions
-uv run main.py --interactive
-
-# Or run with basic interactive prompt
-uv run main.py
-
-# View all available options
-uv run main.py --help
-```
-
-### Interactive Mode
-
-The application now supports an interactive mode with built-in questions in both English and Chinese:
-
-1. Launch the interactive mode:
-
-   ```bash
-   uv run main.py --interactive
-   ```
-
-2. Select your preferred language (English or 中文)
-
-3. Choose from a list of built-in questions or select the option to ask your own question
-
-4. The system will process your question and generate a comprehensive research report
-
-### Human in the Loop
-
-When the DeepResearch workflow has human-in-the-loop enabled, you can review, edit, and approve the plan before execution:
-
-1. **Plan Review**: The generated plan is presented for review before the workflow continues
-
-2. **Providing Feedback**: You can:
-
-   - Accept the plan by responding with `[ACCEPTED]`
-   - Edit the plan by providing feedback (e.g., `[EDIT PLAN] Add more steps about technical implementation`)
-   - The system will incorporate your feedback and generate a revised plan
-
-3. **Auto-acceptance**: You can enable auto-acceptance to skip the review process:
-
-   - Via API: Set `auto_accepted_plan: true` in your request
-
-4. **API Integration**: When using the API, you can provide feedback through the `feedback` parameter:
-
-   ```json
-   {
-     "messages": [{ "role": "user", "content": "What is quantum computing?" }],
-     "thread_id": "my_thread_id",
-     "auto_accepted_plan": false,
-     "feedback": "[EDIT PLAN] Include more about quantum algorithms"
-   }
-   ```
-
-### Command Line Arguments
-
-The application supports several command-line arguments to customize its behavior:
-
-- **query**: The research query to process (can be multiple words)
-- **--interactive**: Run in interactive mode with built-in questions
-- **--max_plan_iterations**: Maximum number of planning cycles (default: 1)
-- **--max_step_num**: Maximum number of steps in a research plan (default: 3)
-- **--debug**: Enable detailed debug logging
 
 ## Getting started
 
@@ -475,7 +336,7 @@ TaskPilot supports private knowledgebase such as RAGFlow, Qdrant, Milvus, and Vi
 
 ## Text-to-speech
 
-TaskPilot now includes a Text-to-Speech (TTS) feature that allows you to convert research reports to speech. Speed, volume, and pitch are customizable.
+TaskPilot now includes a Text-to-Speech (TTS) feature that allows you to convert generated text to speech. Speed, volume, and pitch are customizable.
 
 ### Using the TTS API
 
@@ -635,14 +496,6 @@ In the Studio UI, you can:
 2. Trace execution in real-time to see how data flows through the system
 3. Inspect the state at each step of the workflow
 4. Debug issues by examining inputs and outputs of each component
-5. Provide feedback during the planning phase to refine research plans
-
-When you submit a research topic in the Studio UI, you'll be able to see the entire workflow execution, including:
-
-- The planning phase where the research plan is created
-- The feedback loop where you can modify the plan
-- The research and writing phases for each section
-- The final report generation
 
 ### Enabling LangSmith Tracing
 

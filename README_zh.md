@@ -19,7 +19,6 @@
 - [架构](#架构)
 - [Runtime](#runtime)
 - [特性](#特性)
-- [示例与用法](#示例与用法)
 - [开始使用](#开始使用)
 - [搜索、爬取与知识库](#搜索爬取与知识库)
 - [文本转语音](#文本转语音)
@@ -53,21 +52,6 @@ TaskEvent 日志  →  SSE 实时 / 回放（?task=） / 评测
 ```
 
 Runtime 负责任务生命周期、可观测性和策略；LangGraph 负责图执行。`/api/chat/stream` 仍可作为兼容入口；新接入请走 `/api/tasks`。
-
-### DeepResearch 工作流
-
-默认工作流是 Plan-Execute 图。它是一种 Workflow 实现，不是 Runtime 本身。
-
-![架构图](./assets/architecture.png)
-
-1. **协调器** — 入口节点，启动运行并交给规划
-2. **规划器** — 把目标拆成步骤，计划被接受前可循环修订
-3. **研究团队** — 按角色工具执行步骤
-   - **研究员**：搜索、爬取、RAG、MCP
-   - **编码员**：Python 执行
-4. **报告员** — 汇总发现，生成最终产物
-
-人在环中可以在规划后暂停，接受或修改计划后再继续执行。
 
 ## Runtime
 
@@ -146,122 +130,6 @@ Skill 是可复用的执行策略：描述、标签，以及 `allowed_tools`（�
 ### 工作流产物
 
 - 🎙️ **播客和演示文稿** — 同一任务可生成脚本 + TTS 音频，以及简单 PPT
-
-## 示例与用法
-
-以下样本是 DeepResearch **工作流**的产物，用来展示 Runtime 上的一种 Skill/Workflow，而不是整个产品：
-
-### DeepResearch 工作流样本
-
-1. **OpenAI Sora 报告** - OpenAI 的 Sora AI 工具分析
-   - 讨论功能、访问方式、提示工程、限制和伦理考虑
-   - [查看完整报告](examples/openai_sora_report.md)
-
-2. **Google 的 Agent to Agent 协议报告** - Google 的 Agent to Agent (A2A) 协议概述
-   - 讨论其在 AI 智能体通信中的作用及其与 Anthropic 的 Model Context Protocol (MCP) 的关系
-   - [查看完整报告](examples/what_is_agent_to_agent_protocol.md)
-
-3. **什么是 MCP？** - 对"MCP"一词在多个上下文中的全面分析
-   - 探讨 AI 中的 Model Context Protocol、化学中的 Monocalcium Phosphate 和电子学中的 Micro-channel Plate
-   - [查看完整报告](examples/what_is_mcp.md)
-
-4. **比特币价格波动** - 最近比特币价格走势分析
-
-   - 研究市场趋势、监管影响和技术指标
-   - 基于历史数据提供建议
-   - [查看完整报告](examples/bitcoin_price_fluctuation.md)
-
-5. **什么是 LLM？** - 对大型语言模型的深入探索
-   - 讨论架构、训练、应用和伦理考虑
-   - [查看完整报告](examples/what_is_llm.md)
-
-6. **如何使用 Claude 进行深度研究？** - 在深度研究中使用 Claude 的最佳实践和工作流程
-   - 涵盖提示工程、数据分析和与其他工具的集成
-   - [查看完整报告](examples/how_to_use_claude_deep_research.md)
-
-7. **医疗保健中的 AI 采用：影响因素** - 影响医疗保健中 AI 采用的因素分析
-   - 讨论 AI 技术、数据质量、伦理考虑、经济评估、组织准备度和数字基础设施
-   - [查看完整报告](examples/AI_adoption_in_healthcare.md)
-
-8. **量子计算对密码学的影响** - 量子计算对密码学影响的分析
-
-   - 讨论经典密码学的漏洞、后量子密码学和抗量子密码解决方案
-   - [查看完整报告](examples/Quantum_Computing_Impact_on_Cryptography.md)
-
-9. **克里斯蒂亚诺·罗纳尔多的表现亮点** - 克里斯蒂亚诺·罗纳尔多表现亮点的分析
-   - 讨论他的职业成就、国际进球和在各种比赛中的表现
-   - [查看完整报告](examples/Cristiano_Ronaldo's_Performance_Highlights.md)
-
-要运行这些 DeepResearch 工作流示例，或从命令行发起自己的任务：
-
-```bash
-# 使用特定查询运行
-uv run main.py "哪些因素正在影响医疗保健中的AI采用？"
-
-# 使用自定义规划参数运行
-uv run main.py --max_plan_iterations 3 "量子计算如何影响密码学？"
-
-# 在交互模式下运行，带有内置问题
-uv run main.py --interactive
-
-# 或者使用基本交互提示运行
-uv run main.py
-
-# 查看所有可用选项
-uv run main.py --help
-```
-
-### 交互模式
-
-应用程序现在支持带有英文和中文内置问题的交互模式：
-
-1. 启动交互模式：
-
-   ```bash
-   uv run main.py --interactive
-   ```
-
-2. 选择您偏好的语言（English 或中文）
-
-3. 从内置问题列表中选择或选择提出您自己问题的选项
-
-4. 系统将按 DeepResearch 工作流处理问题并生成报告
-
-### 人在环中
-
-DeepResearch 工作流启用人在环中时，你可以在执行前审查、编辑和批准计划：
-
-1. **计划审查**：生成的计划会先展示给你，确认后再继续执行
-
-2. **提供反馈**：您可以：
-
-   - 通过回复`[ACCEPTED]`接受计划
-   - 通过提供反馈编辑计划（例如，`[EDIT PLAN] 添加更多关于技术实现的步骤`）
-   - 系统将整合您的反馈并生成修订后的计划
-
-3. **自动接受**：您可以启用自动接受以跳过审查过程：
-   - 通过 API：在请求中设置`auto_accepted_plan: true`
-
-4. **API 集成**：使用 API 时，您可以通过`feedback`参数提供反馈：
-
-   ```json
-   {
-     "messages": [{ "role": "user", "content": "什么是量子计算？" }],
-     "thread_id": "my_thread_id",
-     "auto_accepted_plan": false,
-     "feedback": "[EDIT PLAN] 包含更多关于量子算法的内容"
-   }
-   ```
-
-### 命令行参数
-
-应用程序支持多个命令行参数来自定义其行为：
-
-- **query**：要处理的研究查询（可以是多个词）
-- **--interactive**：以交互模式运行，带有内置问题
-- **--max_plan_iterations**：最大规划周期数（默认：1）
-- **--max_step_num**：研究计划中的最大步骤数（默认：3）
-- **--debug**：启用详细调试日志
 
 ## 开始使用
 
@@ -476,7 +344,7 @@ TaskPilot 支持基于私有域知识的检索，您可以将文档上传到多�
 
 ## 文本转语音
 
-TaskPilot 现在包含一个文本转语音 (TTS) 功能，允许您将研究报告转换为语音。速度、音量和音调等特性也可以自定义。
+TaskPilot 现在包含一个文本转语音 (TTS) 功能，允许您将生成的文本转换为语音。速度、音量和音调等特性也可以自定义。
 
 ### 使用 TTS API
 
@@ -632,14 +500,6 @@ langgraph dev
 2. 实时跟踪执行情况，了解数据如何在系统中流动
 3. 检查工作流每个步骤的状态
 4. 通过检查每个组件的输入和输出来调试问题
-5. 在规划阶段提供反馈以完善研究计划
-
-当您在 Studio UI 中提交研究主题时，您将能够看到整个工作流执行过程，包括：
-
-- 创建研究计划的规划阶段
-- 可以修改计划的反馈循环
-- 每个部分的研究和写作阶段
-- 最终报告生成
 
 ### 启用 LangSmith 追踪
 
