@@ -21,6 +21,29 @@ class TaskStore(Protocol):
     def next_seq(self, task_id: str) -> int: ...
 
 
+def create_task_store() -> TaskStore:
+    """Build the Task store from TASK_STORE_URL.
+
+    Defaults to SQLite so events survive process restart. Tests should set
+    TASK_STORE_URL=memory:// (see tests/conftest.py).
+    """
+    from src.config.loader import get_str_env
+
+    url = get_str_env("TASK_STORE_URL", "sqlite:///data/tasks.sqlite")
+    normalized = url.lower()
+    if normalized in {"", "memory", "memory://", "inmemory"}:
+        return InMemoryTaskStore()
+    if normalized.startswith("sqlite:") or "://" not in url:
+        from src.runtime.task.sqlite import SqliteTaskStore
+
+        if normalized.startswith("sqlite:"):
+            return SqliteTaskStore.from_url(url)
+        return SqliteTaskStore(url)
+    raise ValueError(
+        f"Unsupported TASK_STORE_URL={url!r}. Use memory:// or sqlite:///path."
+    )
+
+
 class InMemoryTaskStore:
     """Process-local store. Swap later for SQLite / Postgres without changing TaskService."""
 

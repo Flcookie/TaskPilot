@@ -9,6 +9,8 @@ from src.runtime.task.service import (
     get_task_service,
     set_task_service,
 )
+from src.runtime.task.store import InMemoryTaskStore, create_task_store
+from src.runtime.task.sqlite import SqliteTaskStore
 
 __all__ = [
     "Task",
@@ -17,6 +19,9 @@ __all__ = [
     "TaskConflictError",
     "TaskNotFoundError",
     "TaskService",
+    "InMemoryTaskStore",
+    "SqliteTaskStore",
+    "create_task_store",
     "get_task_service",
     "set_task_service",
 ]

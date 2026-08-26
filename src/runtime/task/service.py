@@ -15,7 +15,7 @@ from src.runtime.task.models import (
     TaskStatus,
     utc_now,
 )
-from src.runtime.task.store import InMemoryTaskStore, TaskStore
+from src.runtime.task.store import InMemoryTaskStore, TaskStore, create_task_store
 
 
 class TaskConflictError(Exception):
@@ -227,7 +227,7 @@ _service: Optional[TaskService] = None
 def get_task_service() -> TaskService:
     global _service
     if _service is None:
-        _service = TaskService()
+        _service = TaskService(store=create_task_store())
     return _service
 
 
