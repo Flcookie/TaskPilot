@@ -6,22 +6,36 @@ import os
 from typing import Annotated, Optional
 
 from langchain_core.tools import tool
-from langchain_experimental.utilities import PythonREPL
+
+from src.runtime.sandbox import run_python
 
 from .decorators import log_io
 
 
 def _is_python_repl_enabled() -> bool:
-    """Check if Python REPL tool is enabled from configuration."""
-    # Check environment variable first
+    """Check if Python execution is enabled from configuration."""
     env_enabled = os.getenv("ENABLE_PYTHON_REPL", "false").lower()
     if env_enabled in ("true", "1", "yes", "on"):
         return True
     return False
 
 
-# Initialize REPL and logger
-repl: Optional[PythonREPL] = PythonREPL() if _is_python_repl_enabled() else None
+class ProcessIsolationBackend:
+    """Child-process backend with the same .run() surface as PythonREPL."""
+
+    def run(self, code: str) -> str:
+        timeout = float(os.getenv("PYTHON_REPL_TIMEOUT", "15"))
+        result = run_python(code, timeout=timeout)
+        if result.timed_out:
+            return f"TimeoutError: {result.error}"
+        if not result.ok:
+            return (result.stderr or result.error or "Error").strip()
+        return result.stdout
+
+
+repl: Optional[ProcessIsolationBackend] = (
+    ProcessIsolationBackend() if _is_python_repl_enabled() else None
+)
 logger = logging.getLogger(__name__)
 
 
@@ -47,8 +61,9 @@ def python_repl_tool(
         return f"Error executing code:\n```python\n{code}\n```\nError: {error_msg}"
 
     logger.info("Executing Python code")
+    backend = repl or ProcessIsolationBackend()
     try:
-        result = repl.run(code)
+        result = backend.run(code)
         # Check if the result is an error message by looking for typical error patterns
         if isinstance(result, str) and ("Error" in result or "Exception" in result):
             logger.error(result)

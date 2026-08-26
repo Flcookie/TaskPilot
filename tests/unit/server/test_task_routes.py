@@ -113,3 +113,33 @@ def test_interrupt_then_resume_and_replay(client):
     replay = client.post(f"/api/tasks/{task_id}/replay")
     assert replay.status_code == 200
     assert "interrupt" in replay.text
+
+
+def test_evaluate_task_returns_process_and_report(client):
+    created = client.post(
+        "/api/tasks",
+        json={"messages": [{"role": "user", "content": "调研量子计算"}]},
+    )
+    task_id = created.json()["id"]
+    from src.runtime.task.service import get_task_service
+
+    service = get_task_service()
+    service.append_event(task_id, "skill_loaded", {"allowed_tools": ["web_search"]})
+    service.append_event(task_id, "tool_calls", {"name": "web_search"})
+    service.append_event(task_id, "token_usage", {"total_tokens": 40})
+    service.mark_succeeded(task_id)
+
+    response = client.post(
+        f"/api/tasks/{task_id}/evaluate",
+        json={
+            "report": "# Title\n\n## Key Points\n- a\n\n## Overview\nQuantum.\n",
+            "use_llm": False,
+            "expected_skill": "deep_research",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "process" in body
+    assert body["report_score"] is not None
+    assert body["process_score"] > 0
+    assert body["skill_loading"]["dynamic_saves_tokens"] is True

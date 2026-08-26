@@ -17,6 +17,7 @@ from src.runtime.task.service import (
 from src.runtime.task.sse import persist_workflow_stream, replay_events_as_sse
 from src.server.task_request import (
     CreateTaskRequest,
+    EvaluateTaskRequest,
     ResumeTaskRequest,
     TaskEventListResponse,
     TaskEventResponse,
@@ -140,6 +141,23 @@ async def replay_task(task_id: str):
             yield chunk
 
     return StreamingResponse(_replay(), media_type="text/event-stream")
+
+
+@router.post("/{task_id}/evaluate")
+async def evaluate_task(task_id: str, request: EvaluateTaskRequest | None = None):
+    _task_or_404(task_id)
+    payload = request or EvaluateTaskRequest()
+    from src.runtime.eval import AgentEvaluator
+
+    result = await AgentEvaluator().evaluate(
+        task_id,
+        report=payload.report,
+        query=payload.query,
+        report_style=payload.report_style or "default",
+        use_llm=payload.use_llm,
+        expected_skill=payload.expected_skill,
+    )
+    return result.to_dict()
 
 
 async def _stream_task_events(task_id: str, after_seq: int = 0):

@@ -22,6 +22,14 @@ class ResumeTaskRequest(BaseModel):
     )
 
 
+class EvaluateTaskRequest(BaseModel):
+    report: Optional[str] = Field(None, description="Report markdown; inferred from reporter events if omitted")
+    query: Optional[str] = Field(None, description="Original user query")
+    report_style: Optional[str] = Field("default")
+    use_llm: bool = Field(False, description="Also run ReportEvaluator LLM-as-Judge")
+    expected_skill: Optional[str] = Field(None, description="Label for skill_hit_rate")
+
+
 class TaskResponse(BaseModel):
     id: str
     status: TaskStatus
