@@ -19,6 +19,29 @@ class MemoryStore(Protocol):
     def clear(self, user_id: Optional[str] = None) -> None: ...
 
 
+def create_memory_store() -> MemoryStore:
+    """Build the Memory store from MEMORY_STORE_URL.
+
+    Defaults to SQLite so preference / background / fact survive restart.
+    Tests should set MEMORY_STORE_URL=memory:// (see tests/conftest.py).
+    """
+    from src.config.loader import get_str_env
+
+    url = get_str_env("MEMORY_STORE_URL", "sqlite:///data/memory.sqlite")
+    normalized = url.lower()
+    if normalized in {"", "memory", "memory://", "inmemory"}:
+        return InMemoryMemoryStore()
+    if normalized.startswith("sqlite:") or "://" not in url:
+        from src.runtime.memory.sqlite import SqliteMemoryStore
+
+        if normalized.startswith("sqlite:"):
+            return SqliteMemoryStore.from_url(url)
+        return SqliteMemoryStore(url)
+    raise ValueError(
+        f"Unsupported MEMORY_STORE_URL={url!r}. Use memory:// or sqlite:///path."
+    )
+
+
 class InMemoryMemoryStore:
     def __init__(self) -> None:
         self._items: dict[str, list[MemoryItem]] = {}

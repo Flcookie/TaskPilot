@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Optional
 
+from src.runtime.sqlite_url import parse_sqlite_url
 from src.runtime.task.models import Task, TaskEvent
 
 logger = logging.getLogger(__name__)
@@ -43,19 +44,6 @@ CREATE TABLE IF NOT EXISTS task_events (
     FOREIGN KEY (task_id) REFERENCES tasks(id)
 );
 """
-
-
-def parse_sqlite_url(url: str) -> str:
-    """Parse sqlite:///relative or sqlite:////absolute URLs into a filesystem path."""
-    if url.startswith("sqlite:////"):
-        return url[len("sqlite:///"):]
-    if url.startswith("sqlite:///"):
-        return url[len("sqlite:///"):]
-    if url.startswith("sqlite://"):
-        raise ValueError(
-            "Unsupported SQLite URL. Use sqlite:///relative/path or sqlite:////abs/path."
-        )
-    return url
 
 
 class SqliteTaskStore:

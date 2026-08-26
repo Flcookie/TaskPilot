@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Optional
 
 from src.runtime.memory.models import MemoryItem, MemoryKind
-from src.runtime.memory.store import InMemoryMemoryStore, MemoryStore
+from src.runtime.memory.store import InMemoryMemoryStore, MemoryStore, create_memory_store
 
 
 def estimate_tokens(text: str) -> int:
@@ -98,7 +98,7 @@ _service: Optional[MemoryService] = None
 def get_memory_service() -> MemoryService:
     global _service
     if _service is None:
-        _service = MemoryService()
+        _service = MemoryService(store=create_memory_store())
     return _service
 
 
