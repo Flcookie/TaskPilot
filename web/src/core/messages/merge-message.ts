@@ -61,7 +61,12 @@ export function mergeMessage(message: Message, event: ChatEvent) {
   } else if (event.type === "interrupt") {
     mergeInterruptMessage(message, event);
   }
-  if (event.type !== "citations" && event.type !== "error" && event.data.finish_reason) {
+  if (
+    event.type !== "citations" &&
+    event.type !== "error" &&
+    "finish_reason" in event.data &&
+    event.data.finish_reason
+  ) {
     message.finishReason = event.data.finish_reason;
     message.isStreaming = false;
     if (message.toolCalls) {

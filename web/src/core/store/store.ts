@@ -293,6 +293,10 @@ function findMessageByToolCallId(toolCallId: string) {
     });
 }
 
+function getOngoingResearchId() {
+  return useStore.getState().ongoingResearchId;
+}
+
 function appendMessage(message: Message) {
   if (
     message.agent === "coder" ||
@@ -308,21 +312,6 @@ function appendMessage(message: Message) {
     appendResearchActivity(message);
   }
   useStore.getState().appendMessage(message);
-}
-
-function updateMessage(message: Message) {
-  if (
-    getOngoingResearchId() &&
-    message.agent === "reporter" &&
-    !message.isStreaming
-  ) {
-    useStore.getState().setOngoingResearch(null);
-  }
-  useStore.getState().updateMessage(message);
-}
-
-function getOngoingResearchId() {
-  return useStore.getState().ongoingResearchId;
 }
 
 function appendResearch(researchId: string) {

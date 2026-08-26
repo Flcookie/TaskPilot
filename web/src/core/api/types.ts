@@ -103,7 +103,17 @@ export interface TaskLifecycleEvent {
 }
 
 export interface SkillSelectedEvent {
-  type: "skill_selected" | "skill_loaded";
+  type: "skill_selected";
+  data: {
+    selected_skills?: string[];
+    skill?: string;
+    reason?: string;
+    allowed_tools?: string[];
+  };
+}
+
+export interface SkillLoadedEvent {
+  type: "skill_loaded";
   data: {
     selected_skills?: string[];
     skill?: string;
@@ -133,4 +143,5 @@ export type ChatEvent =
   | ErrorEvent
   | TaskLifecycleEvent
   | SkillSelectedEvent
+  | SkillLoadedEvent
   | TokenUsageEvent;

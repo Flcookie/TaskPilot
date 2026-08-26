@@ -7,13 +7,13 @@ import { ArrowUp, Lightbulb, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useRef, useState } from "react";
 
+import { BorderBeam } from "~/components/magicui/border-beam";
 import { Detective } from "~/components/task-pilot/icons/detective";
 import MessageInput, {
   type MessageInputRef,
 } from "~/components/task-pilot/message-input";
 import { ReportStyleDialog } from "~/components/task-pilot/report-style-dialog";
 import { Tooltip } from "~/components/task-pilot/tooltip";
-import { BorderBeam } from "~/components/magicui/border-beam";
 import { Button } from "~/components/ui/button";
 import { enhancePrompt } from "~/core/api";
 import { useConfig } from "~/core/api/hooks";

@@ -3,9 +3,9 @@
 
 import { useCallback, useRef } from "react";
 
+import ReportEditor from "~/components/editor";
 import { LoadingAnimation } from "~/components/task-pilot/loading-animation";
 import { Markdown } from "~/components/task-pilot/markdown";
-import ReportEditor from "~/components/editor";
 import { useReplay } from "~/core/replay";
 import { useCitations, useMessage, useStore } from "~/core/store";
 import { cn } from "~/lib/utils";
